@@ -113,7 +113,7 @@ The web UI is available at **http://localhost:8080** — or from any device on y
 
 ### As a systemd service (auto-start on boot)
 
-1. Edit `solar_charge.service` — replace `YOUR_USERNAME` with your Linux username:
+1. Edit `solar_charge.service` — replace `YOUR_USERNAME` with your Linux username and change the paths where needed:
 
    ```ini
    User=lohdal
@@ -126,7 +126,7 @@ The web UI is available at **http://localhost:8080** — or from any device on y
    ```bash
    sudo cp solar_charge.service /etc/systemd/system/
    sudo systemctl daemon-reload
-   sudo systemctl enable --now solar-charge
+   sudo systemctl enable --now solar_charge
    ```
 
 3. Check status:

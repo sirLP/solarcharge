@@ -1,6 +1,6 @@
 [Unit]
 Description=SolarCharge — solar-only EV charging controller (SENEC + Alfen)
-Documentation=https://github.com/lohdal/SolarCharge
+Documentation=https://github.com/sirLP/SolarCharge
 After=network-online.target
 Wants=network-online.target
 

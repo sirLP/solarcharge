@@ -118,7 +118,7 @@ The web UI is available at **http://localhost:8080** — or from any device on y
    ```ini
    User=lohdal
    WorkingDirectory=/home/lohdal/Documents/GitHub/SolarCharge
-   ExecStart=/home/lohdal/Documents/GitHub/SolarCharge/.venv/bin/solar-charge
+   ExecStart=/home/lohdal/Documents/GitHub/SolarCharge/.venv/bin/solar_charge
    ```
 
 2. Install and enable:

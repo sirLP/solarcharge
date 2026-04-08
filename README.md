@@ -32,7 +32,7 @@ SolarCharge continuously reads your SENEC inverter/battery and adjusts the Alfen
 ## Installation
 
 ```bash
-git clone https://github.com/lohdal/SolarCharge
+git clone https://github.com/sirLP/SolarCharge
 cd SolarCharge
 
 python3 -m venv .venv

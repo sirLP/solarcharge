@@ -334,19 +334,14 @@ class Controller:
         if app.override.is_active:
             senec = await self._senec.fetch()
             self._snapshot_diagnostics()
-            override_a = app.override.current_a  # None = pause
+            override_a = app.override.current_a
 
-            if override_a is None:
-                log.info("[OVERRIDE] Charging paused by operator")
-                await self._write_alfen(0.0)
-                new_setpoint = 0.0
-                active = False
-            else:
-                clamped = max(cfg.min_current_a, min(cfg.max_current_a, override_a))
-                log.info("[OVERRIDE] Forcing %.1f A (clamped from %.1f A)", clamped, override_a)
-                await self._write_alfen(clamped)
-                new_setpoint = clamped
-                active = clamped > 0
+            # Clamp to [0, max]; allow 0 to stop charging via override
+            clamped = max(0.0, min(cfg.max_current_a, override_a))
+            log.info("[OVERRIDE] Forcing %.1f A", clamped)
+            await self._write_alfen(clamped)
+            new_setpoint = clamped
+            active = clamped > 0
 
             internal.current_setpoint_a = new_setpoint
             internal.charging_active = active

@@ -23,20 +23,22 @@ if TYPE_CHECKING:
 @dataclass
 class Override:
     """An operator-requested charge current that bypasses solar calculation."""
-    current_a: float | None = None   # None means «pause charging»
+    current_a: float = 0.0           # amps to force (0 = stop charging)
     until: datetime | None = None    # None means «indefinite»
+    active: bool = False             # explicitly set by operator
 
     @property
     def is_active(self) -> bool:
-        if self.current_a is None and self.until is None:
+        if not self.active:
             return False
         if self.until is not None and datetime.now() > self.until:
             return False
         return True
 
     def clear(self) -> None:
-        self.current_a = None
+        self.current_a = 0.0
         self.until = None
+        self.active = False
 
 
 @dataclass

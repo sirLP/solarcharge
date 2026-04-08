@@ -7,7 +7,7 @@ GET  /                  Dashboard HTML (auto-refreshes via JS)
 GET  /api/status        Live status snapshot (JSON)
 GET  /api/config        Readable/editable config values (JSON)
 POST /api/config        Update control thresholds (hot-reload, persisted to TOML)
-POST /api/override      Force a specific current, pause, or resume auto mode
+POST /api/override      Force a specific current or resume auto mode
 """
 
 from __future__ import annotations
@@ -94,7 +94,7 @@ class ConfigUpdateRequest(BaseModel):
 
 
 class OverrideRequest(BaseModel):
-    action: str                        # "set_current" | "pause" | "resume"
+    action: str                        # "set_current" | "resume"
     current_a: float | None = None     # required when action = "set_current"
     duration_minutes: float | None = None  # None = indefinite
 
@@ -224,22 +224,13 @@ def create_app(
             ov.clear()
             return {"ok": True, "message": "Override cleared — returning to auto mode"}
 
-        if req.action == "pause":
-            ov.current_a = None
-            ov.until = (
-                datetime.now() + timedelta(minutes=req.duration_minutes)
-                if req.duration_minutes
-                else None
-            )
-            return {"ok": True, "message": "Charging paused"}
-
         if req.action == "set_current":
             if req.current_a is None:
                 raise HTTPException(400, "current_a required for action set_current")
-            if req.current_a < config.min_current_a or req.current_a > config.max_current_a:
+            if req.current_a < 0 or req.current_a > config.max_current_a:
                 raise HTTPException(
                     400,
-                    f"current_a must be between {config.min_current_a} and {config.max_current_a} A",
+                    f"current_a must be between 0 and {config.max_current_a} A",
                 )
             ov.current_a = req.current_a
             ov.until = (
@@ -247,7 +238,9 @@ def create_app(
                 if req.duration_minutes
                 else None
             )
-            return {"ok": True, "message": f"Override set to {req.current_a} A"}
+            ov.active = True
+            label = "Charging stopped" if req.current_a == 0 else f"Override set to {req.current_a} A"
+            return {"ok": True, "message": label}
 
         raise HTTPException(400, f"Unknown action: {req.action!r}")
 
@@ -585,13 +578,13 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
     <div class="panel">
       <h3>Override</h3>
       <div class="field">
-        <label>Force current (A) <span class="tip" data-tip="Bypass automatic solar control and charge at this fixed current. Useful when you want to charge quickly regardless of surplus.">i</span></label>
+        <label>Force current (A) <span class="tip" data-tip="Bypass automatic solar control and charge at this fixed current. Set to 0 to stop charging. Useful when you want to charge at a fixed rate regardless of solar surplus.">i</span></label>
         <div class="range-row">
           <input type="range" id="ov-slider"
-            min="{cfg.min_current_a}" max="{cfg.max_current_a}" step="1"
-            value="{int((cfg.min_current_a + cfg.max_current_a) / 2)}"
+            min="0" max="{cfg.max_current_a}" step="1"
+            value="{int(cfg.max_current_a / 2)}"
             oninput="document.getElementById('ov-val').textContent=this.value">
-          <span id="ov-val">{int((cfg.min_current_a + cfg.max_current_a) / 2)}</span>
+          <span id="ov-val">{int(cfg.max_current_a / 2)}</span>
         </div>
       </div>
       <div class="field" style="margin-top:.5rem">
@@ -606,7 +599,6 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="doOverride('set_current')">Force Current</button>
-        <button class="btn btn-warning" id="pause-toggle-btn" onclick="togglePause()">⏸️ Pause</button>
         <button class="btn btn-ghost" onclick="doOverride('resume')">Resume Auto</button>
       </div>
       <div id="override-status"></div>
@@ -883,21 +875,12 @@ function applyStatus(d) {{
 
   // Override status line
   const ovs = document.getElementById('override-status');
-  const paused = d.override_active && d.override_current_a === null;
-  const pauseBtn = document.getElementById('pause-toggle-btn');
-  if (paused) {{
-    pauseBtn.innerHTML = '&#x25B6;&#xFE0F; Resume';
-    pauseBtn.classList.remove('btn-warning');
-    pauseBtn.classList.add('btn-primary');
-  }} else {{
-    pauseBtn.innerHTML = '&#x23F8;&#xFE0F; Pause';
-    pauseBtn.classList.remove('btn-primary');
-    pauseBtn.classList.add('btn-warning');
-  }}
   if (d.override_active) {{
-    ovs.textContent = d.override_current_a === null
-      ? 'Paused' + (d.override_until ? ' until ' + new Date(d.override_until).toLocaleTimeString() : ' indefinitely')
-      : d.override_current_a.toFixed(1) + ' A forced' + (d.override_until ? ' until ' + new Date(d.override_until).toLocaleTimeString() : '');
+    ovs.textContent = d.override_current_a === 0
+      ? 'Charging stopped'
+        + (d.override_until ? ' until ' + new Date(d.override_until).toLocaleTimeString() : '')
+      : d.override_current_a.toFixed(1) + ' A forced'
+        + (d.override_until ? ' until ' + new Date(d.override_until).toLocaleTimeString() : '');
   }} else {{
     ovs.textContent = 'Auto mode active';
   }}
@@ -995,12 +978,6 @@ async function saveConfig() {{
   el.textContent = d.message || (r.ok ? 'Saved' : 'Error');
   el.className = r.ok ? 'msg-ok' : 'msg-err';
   setTimeout(() => {{ el.textContent = ''; }}, 4000);
-}}
-
-function togglePause() {{
-  const btn = document.getElementById('pause-toggle-btn');
-  const resuming = btn.classList.contains('btn-primary');
-  doOverride(resuming ? 'resume' : 'pause');
 }}
 
 async function doOverride(action) {{

@@ -158,7 +158,7 @@ sudo ufw allow 8080/tcp
 | **Power Flow** | Live solar, grid, battery, house, and EV surplus in watts |
 | **Charging Status** | Car connection state, setpoint current, wallbox power |
 | **Battery Guard** | Required vs actual SoC, surplus factor, sun times, cloud cover |
-| **Override** | Force a fixed current, ⏸/▶ pause toggle, or resume auto mode |
+| **Override** | Force a fixed current (0 A to stop) or resume auto mode |
 | **Control Settings** | Start/stop thresholds, ramp step, poll interval |
 | **🔍 Diagnostics** | Raw SENEC request/response and Alfen register reads |
 | **📋 History** | Per-session log: date, start/end SoC, kWh delivered |

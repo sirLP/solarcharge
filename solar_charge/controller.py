@@ -9,12 +9,19 @@ Every poll cycle:
 2.  Fetch live power data from SENEC.
 3.  Compute available solar surplus:
 
-        surplus_W = solar_power_w - house_power_w
+        surplus_W = solar_power_w - (house_power_w - wallbox_power_w)
 
-    This gives the raw solar energy not consumed by the house.  The SENEC
-    battery naturally absorbs/releases whatever is left — we do not need to
-    account for it.  Grid import/export is also ignored: SENEC will honour
-    whatever current we ask the wallbox to draw.
+    SENEC's GUI_HOUSE_POW includes all loads on the home circuit, including
+    the EV wallbox.  Without the correction the computed surplus would drop
+    as soon as charging starts (the wallbox power would be double-counted:
+    once as house load and once as the power we are deliberately directing
+    to the car), causing the controller to reduce the setpoint and creating
+    a self-defeating feedback loop.  Subtracting the current wallbox power
+    gives the *true* household load so the surplus represents only solar
+    energy not consumed by the house (excluding EV charging).
+    The SENEC battery naturally absorbs/releases whatever is left — we do
+    not need to account for it.  Grid import/export is also ignored: SENEC
+    will honour whatever current we ask the wallbox to draw.
 
 4.  Apply Battery Guard surplus factor (0–1) if enabled:
 
@@ -412,8 +419,13 @@ class Controller:
                     app.last_updated = datetime.now()
                 return
 
-        # -- 4. Compute surplus (solar minus house load) -------------------
-        surplus_w = senec.solar_power_w - senec.house_power_w
+        # -- 4. Compute surplus (solar minus true house load) ---------------
+        # senec.house_power_w includes the wallbox draw (EV charging is part
+        # of the home circuit measured by SENEC).  We subtract wallbox_power_w
+        # so the surplus is based only on non-EV household consumption.  This
+        # prevents the self-defeating feedback loop where starting to charge
+        # immediately shrinks the perceived surplus and reduces the setpoint.
+        surplus_w = senec.solar_power_w - (senec.house_power_w - wallbox_power_w)
 
         # -- 4b. Apply battery guard (if enabled) -------------------------
         guarded_surplus_w = surplus_w

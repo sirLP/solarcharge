@@ -391,7 +391,7 @@ class Controller:
                     loop = asyncio.get_event_loop()
                     _, guard_status = await loop.run_in_executor(
                         None, self._guard.evaluate,
-                        senec.battery_soc_pct, potential_surplus_w,
+                        senec.battery_soc_pct, potential_surplus_w, senec.battery_power_w,
                     )
                     async with app.lock:
                         app.guard_status = guard_status

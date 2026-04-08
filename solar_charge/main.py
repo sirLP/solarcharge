@@ -120,6 +120,7 @@ def _parse_battery_guard(raw: dict) -> BatteryGuardConfig | None:
         weather_max_sunset_advance_h=float(raw.get("weather_max_sunset_advance_h", 2.0)),
         use_historic_solar=bool(raw.get("use_historic_solar", True)),
         historic_months_lookback=int(raw.get("historic_months_lookback", 3)),
+        battery_max_charge_w=float(raw.get("battery_max_charge_w", 2500.0)),
     )
     if cfg.hard_min_pct >= cfg.daytime_reserve_pct:
         raise ValueError(

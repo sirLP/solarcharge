@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solar_charge"
+version = "0.1.0"
+description = "Solar-only EV charging controller for SENEC + Alfen Eve"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9",
+    "pymodbus>=3.6",
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "tomli-w>=1.0",
+]
+
+[project.scripts]
+solar-charge = "solar_charge.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["solar_charge*"]

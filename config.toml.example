@@ -1,0 +1,62 @@
+[web]
+host = "0.0.0.0"   # bind to all interfaces for LAN access
+port = 8080
+
+[senec]
+host            = "192.168.x.x"   # local IP of your SENEC inverter
+use_https       = true
+poll_interval_s = 10               # minimum 10 s
+
+[alfen]
+host              = "192.168.x.x"  # local IP of your Alfen Eve wallbox
+mode              = "http"         # "http" (MyEve local HTTPS) or "modbus"
+username          = "admin"
+password          = "CHANGE_ME"
+phases            = 3
+voltage_per_phase = 230
+max_current_a     = 16             # 16 A × 3 phases × 230 V ≈ 11 kW
+min_current_a     = 6              # IEC 61851 minimum — do not set below 6
+port              = 502            # Modbus TCP port (modbus mode only)
+slave_id          = 1              # Modbus slave ID (modbus mode only)
+heartbeat_interval_s = 25
+
+[control]
+start_threshold_a = 6.0   # surplus (A) required to start a session
+stop_threshold_a  = 4.0   # surplus drops below this → stop charging
+ramp_step_a       = 1.0   # max current change per poll cycle (A)
+
+# ── Battery Guard ────────────────────────────────────────────────────────────
+# Dynamically limits EV charging surplus when the home battery SoC is below a
+# time-of-day-dependent target.  Remove this section (or set enabled = false)
+# to disable the feature entirely.
+[battery_guard]
+enabled                      = false  # set true to activate
+
+# Location — used for sunrise/sunset calculation
+latitude                     = 48.97  # decimal degrees north
+longitude                    = 12.10  # decimal degrees east
+
+# SoC targets (%):
+#   hard_min_pct        – absolute floor; EV charging stops below this
+#   daytime_reserve_pct – minimum during peak solar hours
+#   night_reserve_pct   – target to hold from sunset through the night
+#   Constraint: hard_min < daytime_reserve < night_reserve
+hard_min_pct                 = 5
+daytime_reserve_pct          = 10
+night_reserve_pct            = 30
+
+# Hours before (effective) sunset to begin ramping up the required SoC
+ramp_hours_before_sunset     = 3.0
+
+# Seasonal correction (cosine curve — peaks around January)
+use_seasonal                 = true
+seasonal_winter_extra_pct    = 15     # extra % added at mid-winter peak
+
+# Weather forecast via Open-Meteo free API (no API key required)
+use_weather_forecast         = true
+weather_overcast_threshold   = 70     # cloud-cover % considered "overcast"
+weather_max_sunset_advance_h = 2.0    # max hours to advance effective sunset
+
+# Historic solar data from the built-in TimeseriesStore
+use_historic_solar           = true
+historic_months_lookback     = 3      # months of history to average

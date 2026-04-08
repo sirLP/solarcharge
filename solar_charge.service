@@ -1,0 +1,28 @@
+[Unit]
+Description=SolarCharge — solar-only EV charging controller (SENEC + Alfen)
+Documentation=https://github.com/lohdal/SolarCharge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# ── Adjust the paths below to match your installation ──────────────────────
+User=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/Documents/GitHub/SolarCharge
+ExecStart=/home/YOUR_USERNAME/Documents/GitHub/SolarCharge/.venv/bin/solar-charge
+# Or if you did not use a venv:
+# ExecStart=/usr/local/bin/solar-charge
+
+Restart=on-failure
+RestartSec=30s
+
+# Give the service time to perform a clean Alfen zero-current shutdown
+TimeoutStopSec=60
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=solar-charge
+
+[Install]
+WantedBy=multi-user.target

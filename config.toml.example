@@ -48,6 +48,11 @@ night_reserve_pct            = 30
 # Hours before (effective) sunset to begin ramping up the required SoC
 ramp_hours_before_sunset     = 3.0
 
+# Battery charge rate cap (W): when the battery is already absorbing at this
+# level, any additional solar is considered free for EV charging regardless of
+# current SoC vs required SoC.
+battery_max_charge_w         = 2500  # adjust to your battery's maximum charge rate
+
 # Seasonal correction (cosine curve — peaks around January)
 use_seasonal                 = true
 seasonal_winter_extra_pct    = 15     # extra % added at mid-winter peak

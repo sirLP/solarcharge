@@ -424,6 +424,7 @@ class Controller:
                 self._guard.evaluate,
                 senec.battery_soc_pct,
                 surplus_w,
+                senec.battery_power_w,
             )
             async with app.lock:
                 app.guard_status = guard_status

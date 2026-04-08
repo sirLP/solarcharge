@@ -95,6 +95,11 @@ class BatteryGuardConfig:
     use_historic_solar: bool = True
     historic_months_lookback: int = 3  # months of data to average
 
+    # Battery charge rate cap: when the battery is already absorbing at (or near)
+    # this level, any additional solar is considered freely available for the EV
+    # regardless of current SOC vs required SOC.
+    battery_max_charge_w: float = 2500.0  # W — adjust to your battery's max charge rate
+
     # Internal — not user-settable
     _weather_cache_ts: float = field(default=0.0,   repr=False)
     _weather_cloud_pct: float | None = field(default=None, repr=False)
@@ -309,6 +314,7 @@ class BatteryGuard:
         self,
         battery_soc_pct: float,
         surplus_w: float,
+        battery_power_w: float = 0.0,
         now: datetime | None = None,
     ) -> tuple[float, GuardStatus]:
         """
@@ -319,16 +325,16 @@ class BatteryGuard:
         battery_soc_pct:
             Current battery state-of-charge (0–100 %).
         surplus_w:
-            Raw EV surplus in watts from the solar controller.
+            Raw EV surplus in watts (solar − house).
+        battery_power_w:
+            Current battery charge power in watts (positive = charging).
+            Used to detect when the battery has hit its charge-rate cap.
         now:
             Current local datetime (defaults to ``datetime.now()`` if omitted).
 
         Returns
         -------
         (guarded_surplus_w, GuardStatus)
-            ``guarded_surplus_w`` is ``surplus_w`` multiplied by the guard
-            factor (0–1).  Pass this to the hysteresis / ramp logic instead
-            of the raw surplus.
         """
         cfg = self._cfg
         if now is None:
@@ -411,7 +417,32 @@ class BatteryGuard:
 
         # ── Surplus factor ───────────────────────────────────────────────
         factor = self._surplus_factor(battery_soc_pct, required_soc, hard_min)
+
+        # ── Battery cap overflow ─────────────────────────────────────────
+        # If the battery is already charging at (or near) its maximum rate,
+        # the SENEC cannot absorb any more power regardless of SOC.  Any
+        # additional solar is genuinely "free" for the EV, so we let it
+        # pass through unconstrained even when SOC < required.
+        cap_overflow_w = 0.0
+        if battery_power_w >= cfg.battery_max_charge_w * 0.95:  # 5% tolerance
+            # Solar that exceeds battery cap is free for EV regardless of guard
+            cap_overflow_w = max(0.0, surplus_w - cfg.battery_max_charge_w)
+            if cap_overflow_w > 0:
+                log.debug(
+                    "BatteryGuard: battery at cap (%.0f W ≥ %.0f W) "
+                    "→ %.0f W overflow available for EV",
+                    battery_power_w, cfg.battery_max_charge_w, cap_overflow_w,
+                )
+
+        # Apply guard factor to the non-overflow portion, then add the
+        # overflow back unconstrained.
         guarded_surplus = surplus_w * factor
+        if cap_overflow_w > 0:
+            # The overflow is already included in surplus_w * factor when
+            # factor=1, so only add the extra when factor < 1.
+            guarded_surplus = max(guarded_surplus, cap_overflow_w + (surplus_w - cap_overflow_w) * factor)
+            if factor < 1.0:
+                reason += f" [+{cap_overflow_w:.0f} W battery-cap overflow]"
 
         active = factor < 1.0
         if active:

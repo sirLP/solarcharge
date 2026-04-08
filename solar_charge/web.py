@@ -546,7 +546,7 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
       <span class="status-badge badge-no-vehicle" id="car-badge">No vehicle</span>
       <div class="stat">
         <span class="s-label">Setpoint <span class="tip" data-tip="Charge current (A) currently commanded to the wallbox by the solar controller.">i</span></span>
-        <span class="s-value" id="setpoint-a">— A</span>
+        <span class="s-value" id="setpoint-a">— A (— kW)</span>
       </div>
       <div class="stat">
         <span class="s-label">Charging Power <span class="tip" data-tip="Actual power being delivered to the EV right now, as measured by the wallbox meter.">i</span></span>
@@ -841,6 +841,9 @@ async function fetchStatus() {{
 
 function fmt(w) {{ return Math.abs(w) >= 1000 ? (w/1000).toFixed(1)+'k' : Math.round(w).toString(); }}
 
+const PHASES = {cfg.phases};
+const VOLTS  = {cfg.voltage_per_phase};
+
 function applyStatus(d) {{
   // Header
   const mb = document.getElementById('mode-badge');
@@ -862,7 +865,9 @@ function applyStatus(d) {{
   const surplusKwh = d.surplus_w > 0 ? (d.surplus_w / 1000) : 0;
   document.getElementById('surplus-kwh').textContent = surplusKwh > 0 ? surplusKwh.toFixed(2) + ' kW available' : '';
   // Charging status
-  document.getElementById('setpoint-a').textContent = d.setpoint_a.toFixed(1) + ' A';
+  const setpointKw = (d.setpoint_a * PHASES * VOLTS / 1000);
+  document.getElementById('setpoint-a').textContent =
+    d.setpoint_a.toFixed(1) + ' A (' + setpointKw.toFixed(1) + ' kW)';
   document.getElementById('wb-power').textContent = fmt(d.wallbox_power_w) + ' W';
   document.getElementById('wb-state').textContent = d.car_status_raw || '—';
 

@@ -1,3 +1,97 @@
+# SolarCharge v1.2.0 — Release Notes
+
+**Release date:** 2026-04-09
+
+---
+
+## New Features
+
+### RFID Card Guard
+An optional allowlist-based access-control layer that prevents unauthorised EV
+charging sessions.
+
+- Enable via a new `[rfid]` section in `config.toml` with one `[[rfid.card]]`
+  entry per allowed card, each carrying a `uid` (hex UID as reported by Alfen)
+  and a human-readable `name`.
+- When enabled, the controller reads the active RFID tag from the Alfen
+  transaction log on every poll cycle until a tag is confirmed.  If the tag is
+  absent or not in the allowlist, the wallbox is immediately set to 0 A and the
+  session is blocked.  The guard retries on every subsequent cycle so a brief
+  read delay does not result in a missed check.
+- Blocked access attempts are recorded with timestamp, UID and card name, and
+  displayed in the new **RFID Guard** panel on the dashboard.
+- The guard state and card list are editable live from the web UI — no service
+  restart required.  Changes are written back to `config.toml`.
+- RFID scan events are written to the application log:
+
+  ```
+  RFID scan started  — uid=XXXXXXXXXXXX  name=Card A  result=AUTHORISED
+  RFID scan ended    — uid=XXXXXXXXXXXX  name=Card A
+  RFID scan started  — uid=YYYYYYYYYYYY  name=<unknown>  result=DENIED (not in allowlist)
+  ```
+
+Configure in `config.toml`:
+
+```toml
+[rfid]
+enabled = true
+
+[[rfid.card]]
+uid  = "XXXXXXXXXXXX"   # uppercase hex UID as reported by the wallbox
+name = "Card A"
+
+[[rfid.card]]
+uid  = "YYYYYYYYYYYY"
+name = "Card B"
+```
+
+---
+
+## Bug Fixes
+
+### Charging History showed wrong timestamps (UTC instead of local time)
+Alfen's transaction log stores session start/end times in UTC.  These were
+being displayed without timezone conversion, so users in UTC+2 (CEST) saw
+times two hours early.  Timestamps are now converted to the system local
+timezone before being stored.
+
+### Charging History session stuck as "In progress" after car disconnects
+When SolarCharge stops a session by reducing the setpoint to 0 A, the Alfen
+transaction log does not receive a `txstop2` record, leaving the session
+marked *In progress* indefinitely.  `GET /api/wallbox-sessions` now
+synthesises a session close from the live meter reading when the last
+transaction is still `in_progress` and the wallbox reports no vehicle present.
+
+### Session open/close driven by internal flag instead of wallbox state
+In edge cases (service restart mid-session, manual current override) the
+internal session-tracking flag could diverge from the actual wallbox charging
+state.  Session start and end transitions are now driven entirely from the
+wallbox `ChargeStatus.CHARGING` value reported on each poll cycle.
+
+---
+
+## Configuration Changes
+
+| Key | Section | Default | Notes |
+|---|---|---|---|
+| `enabled` | `[rfid]` | `false` | New — enable/disable the RFID guard |
+| `[[rfid.card]]` | `[rfid]` | *(none)* | New — one entry per allowed card |
+
+No other config keys changed.
+
+---
+
+## Upgrade Notes
+
+1. **No breaking changes** — existing `config.toml` files are fully compatible.
+2. The RFID guard is **disabled by default** (`enabled = false`).  Add a
+   `[rfid]` section with `[[rfid.card]]` entries only if you want card-based
+   access control.
+
+---
+
+---
+
 # SolarCharge v1.1.0 — Release Notes
 
 **Release date:** 2026-04-09

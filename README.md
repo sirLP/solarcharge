@@ -4,7 +4,7 @@
 
 SolarCharge continuously reads your SENEC inverter/battery and adjusts the Alfen Eve charge current in real time so your EV charges *only* on solar surplus — no grid energy wasted. A built-in web UI gives you live power-flow monitoring, override controls, charging history, and an optional battery guard that protects home-battery reserves as the day progresses.
 
-> **Current version: v1.1.0** — see [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
+> **Current version: v1.2.0** — see [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
 
 ---
 
@@ -17,7 +17,8 @@ SolarCharge continuously reads your SENEC inverter/battery and adjusts the Alfen
 | 📊 **Live dashboard** | Power flow cards, charging status with live session kWh, override controls, battery guard panel |
 | 📋 **Charging History** | Per-session kWh log; dedicated Charging History page |
 | 📈 **Charts** | Interactive time-series charts of solar, grid, battery and EV power |
-| 🔌 **Alfen Eve** | Supports both Modbus TCP and local HTTPS API (MyEve / HTTP mode) |
+| � **RFID Card Guard** | Optional allowlist-based access control — only registered cards can start a session; blocked attempts are logged and visible in the UI |
+| �🔌 **Alfen Eve** | Supports both Modbus TCP and local HTTPS API (MyEve / HTTP mode) |
 | 🏠 **SENEC** | Reads solar, grid, battery and house power via the local SENEC API |
 | 🌐 **LAN access** | Accessible from any device on your home network |
 
@@ -78,6 +79,17 @@ voltage_per_phase = 230
 max_current_a = 16
 min_current_a = 6
 release_current_a = 32    # current written on shutdown — returns wallbox to standalone
+
+[rfid]                     # optional — remove section to disable
+enabled = true
+
+[[rfid.card]]
+uid  = "XXXXXXXXXXXX"   # uppercase hex UID as reported by the Alfen transaction log
+name = "Card A"
+
+[[rfid.card]]
+uid  = "YYYYYYYYYYYY"
+name = "Card B"
 
 [control]
 start_threshold_a = 6.0    # surplus (A) required to start a session
@@ -167,6 +179,7 @@ sudo ufw allow 8080/tcp
 | **🔍 Diagnostics** | Raw SENEC request/response and Alfen register reads |
 | **📈 Chart** | Time-series chart of all power channels |
 | **⚡ Charging History** | Per-session log with kWh totals, duration, solar fraction |
+| **🔑 RFID Guard** | Enable/disable guard, manage allowed cards, view blocked-access log |
 
 ---
 

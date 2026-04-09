@@ -318,6 +318,11 @@ def create_app(
         _persist_rfid_config()
         return {"ok": True, "message": f"RFID guard {'enabled' if req.enabled else 'disabled'} with {len(cards)} card(s)"}
 
+    @app.get("/api/rfid/blocked")
+    async def get_rfid_blocked() -> dict:
+        """Return the most recent RFID-blocked access attempts (newest first)."""
+        return {"blocked": list(app_state.rfid_blocked_log)}
+
     @app.get("/api/diagnostics")
     async def get_diagnostics() -> dict:
         d = app_state.diagnostics
@@ -692,6 +697,10 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
       </label>
     </h3>
     <div id="rfid-card-list" style="margin:.35rem 0 .5rem 0"></div>
+    <div id="rfid-blocked" style="margin-top:.4rem;display:none">
+      <div style="font-size:.75rem;color:var(--muted);font-weight:600;margin-bottom:.25rem">Blocked attempts</div>
+      <div id="rfid-blocked-list"></div>
+    </div>
     <div style="display:flex;gap:.4rem;margin-top:.4rem;align-items:center">
       <input id="rfid-add-uid" type="text" placeholder="Card UID (hex)" style="flex:1;padding:.28rem .5rem;border:1px solid var(--border);border-radius:.4rem;font-size:.8rem;font-family:monospace">
       <input id="rfid-add-name" type="text" placeholder="Name (optional)" style="flex:1;padding:.28rem .5rem;border:1px solid var(--border);border-radius:.4rem;font-size:.8rem">
@@ -1159,11 +1168,27 @@ function renderRfidPanel(d) {{
 }}
 async function fetchRfid() {{
   try {{
-    const r = await fetch('/api/rfid');
-    const d = await r.json();
+    const [cfgR, blkR] = await Promise.all([fetch('/api/rfid'), fetch('/api/rfid/blocked')]);
+    const d = await cfgR.json();
+    const b = await blkR.json();
     document.getElementById('rfid-panel').style.display = '';
     renderRfidPanel(d);
+    renderRfidBlocked(b.blocked || []);
   }} catch (_) {{}}
+}}
+function renderRfidBlocked(blocked) {{
+  const wrap = document.getElementById('rfid-blocked');
+  const list = document.getElementById('rfid-blocked-list');
+  if (!wrap || !list) return;
+  if (!blocked.length) {{ wrap.style.display = 'none'; return; }}
+  wrap.style.display = '';
+  list.innerHTML = blocked.map(b =>
+    `<div style="display:flex;gap:.5rem;align-items:center;padding:.2rem 0;border-bottom:1px solid var(--border);font-size:.75rem">
+      <span style="color:var(--muted);flex-shrink:0">${{b.ts}}</span>
+      <span style="font-family:monospace;color:var(--red);letter-spacing:.04em;flex-shrink:0">${{b.uid}}</span>
+      <span style="color:var(--muted)">${{b.name || ''}}</span>
+    </div>`
+  ).join('');
 }}
 async function setRfidEnabled(val) {{
   _rfidData.enabled = val;
@@ -1202,6 +1227,12 @@ fetchConfig();
 fetchStatus();
 fetchRfid();
 setInterval(fetchStatus, REFRESH_MS);
+setInterval(async () => {{
+  try {{
+    const r = await fetch('/api/rfid/blocked');
+    renderRfidBlocked((await r.json()).blocked || []);
+  }} catch (_) {{}}
+}}, REFRESH_MS);
 
 // ── Chart modal ────────────────────────────────────────────────
 // Colours cycling through a palette

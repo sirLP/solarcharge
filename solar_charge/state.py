@@ -8,6 +8,7 @@ event loop, so a plain asyncio.Lock is sufficient for thread-safe access.
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -99,3 +100,6 @@ class AppState:
 
     # Concurrency guard — use with «async with state.lock»
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    # RFID guard — recent blocked access attempts (newest first, capped at 50)
+    rfid_blocked_log: deque = field(default_factory=lambda: deque(maxlen=50))

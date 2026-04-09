@@ -252,6 +252,16 @@ class Controller:
                         "RFID guard: tag %r is not in the allowlist — stopping charge",
                         rfid or "<none>",
                     )
+                    # Record the blocked attempt so the web UI can display it
+                    known_name = next(
+                        (c["name"] for c in self._cfg.rfid_cards if c["uid"] == rfid_upper),
+                        None,
+                    )
+                    self._app_state.rfid_blocked_log.appendleft({
+                        "ts":   datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "uid":  rfid or "<none>",
+                        "name": known_name or "",
+                    })
                     await self._write_alfen(0.0)
                     return  # do not record a session
 

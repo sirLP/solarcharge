@@ -443,6 +443,7 @@ class Controller:
         target_a = guarded_surplus_w / (cfg.phases * cfg.voltage_per_phase)
 
         # -- 5. Hysteresis -------------------------------------------------
+        session_just_started = False
         if not internal.charging_active:
             if target_a >= cfg.start_threshold_a:
                 log.info(
@@ -450,6 +451,7 @@ class Controller:
                     guarded_surplus_w, target_a,
                 )
                 internal.charging_active = True
+                session_just_started = True
             else:
                 log.debug(
                     "Surplus %.0f W (%.2f A) below start threshold %.1f A -- idle",
@@ -488,10 +490,16 @@ class Controller:
         desired_a = max(cfg.min_current_a, min(cfg.max_current_a, target_a))
 
         # -- 7. Ramp limit -------------------------------------------------
-        delta = desired_a - internal.current_setpoint_a
-        if abs(delta) > cfg.ramp_step_a:
-            delta = cfg.ramp_step_a if delta > 0 else -cfg.ramp_step_a
-        new_setpoint_a = internal.current_setpoint_a + delta
+        # On the first cycle of a new session jump straight to the target so
+        # the EV gets full power immediately rather than crawling up 1 A/step.
+        if session_just_started:
+            new_setpoint_a = desired_a
+            delta = new_setpoint_a - internal.current_setpoint_a
+        else:
+            delta = desired_a - internal.current_setpoint_a
+            if abs(delta) > cfg.ramp_step_a:
+                delta = cfg.ramp_step_a if delta > 0 else -cfg.ramp_step_a
+            new_setpoint_a = internal.current_setpoint_a + delta
         changed = abs(delta) > 0.05
         internal.current_setpoint_a = new_setpoint_a
 

@@ -599,13 +599,19 @@ class AlfenHTTPClient:
 
     def read_rfid_tag(self) -> str:
         """
-        Best-effort read of the last authorised RFID tag.
+        Read the RFID tag for the current in-progress session.
 
-        The local HTTPS API does not expose RFID tags via the simple prop
-        endpoint — reading them requires parsing the raw transaction log.
-        Returns an empty string for now (same behaviour as the Modbus client
-        on firmware that does not expose register 1240).
+        Fetches the transaction log and returns the RFID from the last
+        open (in-progress) session.  Returns an empty string when the
+        session has no RFID tag or when the log cannot be fetched.
         """
+        try:
+            sessions = self.read_transactions()
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Alfen HTTP: read_rfid_tag failed to read transactions: %s", exc)
+            return ""
+        if sessions and sessions[-1]["status"] == "in_progress":
+            return sessions[-1].get("rfid_tag", "")
         return ""
 
     def read_transactions(self) -> list[dict]:

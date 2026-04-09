@@ -53,6 +53,7 @@ def _load_config(path: Path) -> tuple[ControllerConfig, str, int]:
     ctrl  = raw.get("control", {})
     web   = raw.get("web", {})
     guard_raw = raw.get("battery_guard", {})
+    rfid_raw  = raw.get("rfid", {})
 
     poll_interval = int(senec.get("poll_interval_s", _MIN_POLL_INTERVAL_S))
     if poll_interval < _MIN_POLL_INTERVAL_S:
@@ -100,8 +101,23 @@ def _load_config(path: Path) -> tuple[ControllerConfig, str, int]:
         stop_threshold_a=stop_a,
         ramp_step_a=float(ctrl.get("ramp_step_a", 1)),
         battery_guard=_parse_battery_guard(guard_raw),
+        **_parse_rfid(rfid_raw),
     )
     return ctrl_config, web.get("host", "0.0.0.0"), int(web.get("port", 8080))
+
+
+def _parse_rfid(raw: dict) -> dict:
+    """Parse the optional [rfid] section; returns kwargs for ControllerConfig."""
+    cards: list[dict] = [
+        {"uid": str(c["uid"]).upper().strip(), "name": str(c.get("name", ""))}
+        for c in raw.get("cards", [])
+        if "uid" in c
+    ]
+    return {
+        "rfid_enabled":  bool(raw.get("enabled", False)),
+        "rfid_allowlist": [c["uid"] for c in cards],
+        "rfid_cards":     cards,
+    }
 
 
 def _parse_battery_guard(raw: dict) -> BatteryGuardConfig | None:

@@ -104,6 +104,16 @@ class GuardUpdateRequest(BaseModel):
     linear_mode: bool | None = None    # enable Linear Factor mode
 
 
+class RfidCard(BaseModel):
+    uid: str
+    name: str = ""
+
+
+class RfidUpdateRequest(BaseModel):
+    enabled: bool
+    cards: list[RfidCard] = []
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  App factory
 # ─────────────────────────────────────────────────────────────────────────────
@@ -196,6 +206,17 @@ def create_app(
         with config_path.open("wb") as fh:
             tomli_w.dump(raw, fh)
 
+    def _persist_rfid_config() -> None:
+        """Write the current [rfid] settings (enabled + cards list) back to TOML."""
+        with config_path.open("rb") as fh:
+            raw: dict[str, Any] = tomllib.load(fh)
+        raw["rfid"] = {
+            "enabled": config.rfid_enabled,
+            "cards": config.rfid_cards,
+        }
+        with config_path.open("wb") as fh:
+            tomli_w.dump(raw, fh)
+
     # ── Routes ───────────────────────────────────────────────────────────
 
     @app.get("/api/status", response_model=StatusResponse)
@@ -274,6 +295,28 @@ def create_app(
         _persist_guard_config()
         mode = "Linear factor" if config.battery_guard.linear_mode else "Full-or-Off"
         return {"ok": True, "message": f"Battery Guard mode set to: {mode}"}
+
+    @app.get("/api/rfid")
+    async def get_rfid() -> dict:
+        """Return RFID guard configuration (enabled flag + allowed card list)."""
+        return {
+            "enabled": config.rfid_enabled,
+            "cards":   config.rfid_cards,
+        }
+
+    @app.post("/api/rfid")
+    async def update_rfid(req: RfidUpdateRequest) -> dict:
+        """Update RFID guard settings and persist to TOML."""
+        cards = [
+            {"uid": c.uid.upper().strip(), "name": c.name.strip()}
+            for c in req.cards
+            if c.uid.strip()
+        ]
+        config.rfid_enabled  = req.enabled
+        config.rfid_cards    = cards
+        config.rfid_allowlist = [c["uid"] for c in cards]
+        _persist_rfid_config()
+        return {"ok": True, "message": f"RFID guard {'enabled' if req.enabled else 'disabled'} with {len(cards)} card(s)"}
 
     @app.get("/api/diagnostics")
     async def get_diagnostics() -> dict:
@@ -637,6 +680,26 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
     </div>
     <div class="guard-meta" id="guard-reason"></div>
   </div>
+
+  <div id="rfid-panel" class="panel" style="display:none">
+    <h3>RFID Card Guard <span class="tip" data-tip="When enabled, only cars presenting a listed RFID card may charge. Any vehicle with an unknown or unlisted card is stopped immediately.">i</span>
+      <label class="toggle" style="margin-left:auto;display:flex;align-items:center;gap:.4rem">
+        <span style="font-size:.75rem;color:var(--muted)">Enforce</span>
+        <label class="toggle" style="margin:0">
+          <input type="checkbox" id="rfid-enabled-toggle" onchange="setRfidEnabled(this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+      </label>
+    </h3>
+    <div id="rfid-card-list" style="margin:.35rem 0 .5rem 0"></div>
+    <div style="display:flex;gap:.4rem;margin-top:.4rem;align-items:center">
+      <input id="rfid-add-uid" type="text" placeholder="Card UID (hex)" style="flex:1;padding:.28rem .5rem;border:1px solid var(--border);border-radius:.4rem;font-size:.8rem;font-family:monospace">
+      <input id="rfid-add-name" type="text" placeholder="Name (optional)" style="flex:1;padding:.28rem .5rem;border:1px solid var(--border);border-radius:.4rem;font-size:.8rem">
+      <button class="btn btn-primary" style="font-size:.78rem;padding:.3rem .7rem" onclick="rfidAddCard()">Add</button>
+    </div>
+    <div id="rfid-status" style="font-size:.75rem;color:var(--muted);margin-top:.3rem;min-height:1rem"></div>
+  </div>
+
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;flex-wrap:wrap;margin-top:0">
 
     <div class="panel">
@@ -1074,8 +1137,70 @@ async function doOverride(action) {{
   fetchStatus();
 }}
 
+// ── RFID Card Guard ─────────────────────────────────────
+let _rfidData = {{enabled: false, cards: []}};
+function renderRfidPanel(d) {{
+  _rfidData = d;
+  const tog = document.getElementById('rfid-enabled-toggle');
+  if (tog && tog.checked !== d.enabled) tog.checked = d.enabled;
+  const list = document.getElementById('rfid-card-list');
+  if (!list) return;
+  if (!d.cards.length) {{
+    list.innerHTML = '<span style="font-size:.78rem;color:var(--muted)">No cards configured — all cars will be blocked when guard is enabled.</span>';
+  }} else {{
+    list.innerHTML = d.cards.map((c, i) =>
+      `<div style="display:flex;align-items:center;gap:.5rem;padding:.25rem 0;border-bottom:1px solid var(--border)">
+        <span style="font-family:monospace;font-size:.78rem;color:#553c9a;letter-spacing:.04em;flex-shrink:0">${{c.uid}}</span>
+        <span style="font-size:.8rem;color:var(--muted);flex:1">${{c.name || ''}}</span>
+        <button class="btn btn-ghost" style="font-size:.7rem;padding:.12rem .4rem;color:var(--red)" onclick="rfidRemove(${{i}})">&#x2715;</button>
+      </div>`
+    ).join('');
+  }}
+}}
+async function fetchRfid() {{
+  try {{
+    const r = await fetch('/api/rfid');
+    const d = await r.json();
+    document.getElementById('rfid-panel').style.display = '';
+    renderRfidPanel(d);
+  }} catch (_) {{}}
+}}
+async function setRfidEnabled(val) {{
+  _rfidData.enabled = val;
+  await rfidSave();
+}}
+async function rfidAddCard() {{
+  const raw = document.getElementById('rfid-add-uid').value.trim();
+  const uid = raw.toUpperCase().replace(/[^0-9A-F]/gi, '');
+  const name = document.getElementById('rfid-add-name').value.trim();
+  const st = document.getElementById('rfid-status');
+  if (!uid) {{ st.textContent = 'UID is required.'; return; }}
+  if (_rfidData.cards.some(c => c.uid === uid)) {{ st.textContent = 'Card already listed.'; return; }}
+  _rfidData.cards.push({{uid, name}});
+  document.getElementById('rfid-add-uid').value = '';
+  document.getElementById('rfid-add-name').value = '';
+  await rfidSave();
+}}
+async function rfidRemove(idx) {{
+  _rfidData.cards.splice(idx, 1);
+  await rfidSave();
+}}
+async function rfidSave() {{
+  const r = await fetch('/api/rfid', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify(_rfidData),
+  }});
+  const j = await r.json();
+  const el = document.getElementById('rfid-status');
+  el.textContent = j.ok ? 'Saved.' : (j.detail || 'Error saving');
+  setTimeout(() => {{ if (el) el.textContent = ''; }}, 2500);
+  if (j.ok) renderRfidPanel(_rfidData);
+}}
+
 fetchConfig();
 fetchStatus();
+fetchRfid();
 setInterval(fetchStatus, REFRESH_MS);
 
 // ── Chart modal ────────────────────────────────────────────────

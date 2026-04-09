@@ -16,7 +16,7 @@ phases            = 3
 voltage_per_phase = 230
 max_current_a     = 16             # 16 A × 3 phases × 230 V ≈ 11 kW
 min_current_a     = 6              # IEC 61851 minimum — do not set below 6
-release_current_a = 32             # current written on shutdown so wallbox returns to standalone (default: 32 A)
+release_current_a = 16             # current written on shutdown so wallbox returns to standalone (default: 32 A)
 port              = 502            # Modbus TCP port (modbus mode only)
 slave_id          = 1              # Modbus slave ID (modbus mode only)
 heartbeat_interval_s = 25
@@ -66,3 +66,17 @@ weather_max_sunset_advance_h = 2.0    # max hours to advance effective sunset
 # Historic solar data from the built-in TimeseriesStore
 use_historic_solar           = true
 historic_months_lookback     = 3      # months of history to average
+
+# ── RFID Card Guard ──────────────────────────────────────────────────────────
+# When enabled, only cars presenting a listed RFID card may charge.
+# Any vehicle whose card is missing from the list (or has no card) is stopped
+# immediately after the wallbox detects the session starting.
+# Cards can also be managed live from the SolarCharge web UI.
+[rfid]
+enabled = false   # set true to activate
+
+# List cards with optional friendly names.  UIDs must match exactly what
+# Alfen reports in its transaction log (hex string, case-insensitive).
+# [[rfid.cards]]
+# uid  = "0586E4A0977300"
+# name = "My car"

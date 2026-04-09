@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from solar_charge.alfen import AlfenClient, AlfenState, ChargeStatus
@@ -86,6 +86,11 @@ class ControllerConfig:
 
     # Battery guard (optional)
     battery_guard: BatteryGuardConfig | None = None
+
+    # RFID card guard (optional)
+    rfid_enabled: bool = False
+    rfid_allowlist: list[str] = field(default_factory=list)  # uppercase UIDs
+    rfid_cards: list[dict] = field(default_factory=list)     # [{uid, name}] for web API
 
 
 @dataclass
@@ -238,6 +243,18 @@ class Controller:
                     rfid = await loop.run_in_executor(None, self._alfen.read_rfid_tag)
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Session start: cannot read RFID tag: %s", exc)
+
+            # ── RFID guard ─────────────────────────────────────────────
+            if self._cfg.rfid_enabled and self._cfg.rfid_allowlist:
+                rfid_upper = rfid.upper() if rfid else ""
+                if rfid_upper not in self._cfg.rfid_allowlist:
+                    log.warning(
+                        "RFID guard: tag %r is not in the allowlist — stopping charge",
+                        rfid or "<none>",
+                    )
+                    await self._write_alfen(0.0)
+                    return  # do not record a session
+
             h.start_session(rfid)
             h.set_start_energy(energy_wh)
 

@@ -121,6 +121,7 @@ class Controller:
         self._history = history
         self._timeseries = timeseries
         self._prev_wallbox_charging: bool = False  # wallbox ChargeStatus.CHARGING last cycle
+        self._rfid_session_validated: bool = False  # True once RFID cleared for current session
         self._calc_only = not bool(config.alfen_host)
 
         self._senec = SenecClient(
@@ -223,6 +224,54 @@ class Controller:
 
     async def _update_session(self, was_charging: bool, is_charging: bool) -> None:
         """Detect charging start/stop transitions and maintain session history."""
+
+        # ── RFID guard (independent of session history) ────────────────
+        # Re-attempt on every cycle until validated so that timing issues
+        # (e.g. Alfen hasn't written txstart2 yet) are automatically retried.
+        if is_charging and not self._rfid_session_validated and self._cfg.rfid_enabled:
+            rfid_for_guard = ""
+            if self._alfen and not self._calc_only:
+                try:
+                    rfid_for_guard = await asyncio.get_event_loop().run_in_executor(
+                        None, self._alfen.read_rfid_tag
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("RFID guard: cannot read tag: %s", exc)
+
+            if self._cfg.rfid_allowlist:
+                rfid_upper = rfid_for_guard.upper() if rfid_for_guard else ""
+                if rfid_upper not in self._cfg.rfid_allowlist:
+                    log.warning(
+                        "RFID guard: tag %r not in allowlist — stopping charge",
+                        rfid_for_guard or "<none>",
+                    )
+                    known_name = next(
+                        (c["name"] for c in self._cfg.rfid_cards if c["uid"] == rfid_upper),
+                        None,
+                    )
+                    self._app_state.rfid_blocked_log.appendleft({
+                        "ts":   datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "uid":  rfid_for_guard or "<none>",
+                        "name": known_name or "",
+                    })
+                    await self._write_alfen(0.0)
+                    return  # do not start/continue session
+                else:
+                    # Tag is valid — mark session as validated so we don't recheck
+                    log.info(
+                        "RFID guard: tag %r authorised (%s)",
+                        rfid_for_guard,
+                        next((c["name"] for c in self._cfg.rfid_cards if c["uid"] == rfid_upper), ""),
+                    )
+                    self._rfid_session_validated = True
+            else:
+                # No cards configured — guard enabled but empty list; block everything
+                log.warning(
+                    "RFID guard: enabled but allowlist is empty — stopping charge"
+                )
+                await self._write_alfen(0.0)
+                return
+
         h = self._history
         if h is None or self._calc_only:
             return
@@ -244,32 +293,12 @@ class Controller:
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Session start: cannot read RFID tag: %s", exc)
 
-            # ── RFID guard ─────────────────────────────────────────────
-            if self._cfg.rfid_enabled and self._cfg.rfid_allowlist:
-                rfid_upper = rfid.upper() if rfid else ""
-                if rfid_upper not in self._cfg.rfid_allowlist:
-                    log.warning(
-                        "RFID guard: tag %r is not in the allowlist — stopping charge",
-                        rfid or "<none>",
-                    )
-                    # Record the blocked attempt so the web UI can display it
-                    known_name = next(
-                        (c["name"] for c in self._cfg.rfid_cards if c["uid"] == rfid_upper),
-                        None,
-                    )
-                    self._app_state.rfid_blocked_log.appendleft({
-                        "ts":   datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "uid":  rfid or "<none>",
-                        "name": known_name or "",
-                    })
-                    await self._write_alfen(0.0)
-                    return  # do not record a session
-
             h.start_session(rfid)
             h.set_start_energy(energy_wh)
 
         elif was_charging and not is_charging:
             # ── Session just ended ─────────────────────────────────────
+            self._rfid_session_validated = False  # reset for next session
             energy_wh = None
             if self._alfen and not self._calc_only:
                 try:

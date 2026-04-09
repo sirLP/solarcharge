@@ -602,17 +602,32 @@ class AlfenHTTPClient:
         Read the RFID tag for the current in-progress session.
 
         Fetches the transaction log and returns the RFID from the last
-        open (in-progress) session.  Returns an empty string when the
-        session has no RFID tag or when the log cannot be fetched.
+        open (in-progress) session, PROVIDED that session started within
+        the last 5 minutes.  Older in-progress records are treated as
+        stale (e.g. a session that was never properly closed) and ignored.
+        Returns an empty string when no recent in-progress session is found
+        or when the log cannot be fetched.
         """
         try:
             sessions = self.read_transactions()
         except Exception as exc:  # noqa: BLE001
             log.debug("Alfen HTTP: read_rfid_tag failed to read transactions: %s", exc)
             return ""
-        if sessions and sessions[-1]["status"] == "in_progress":
-            return sessions[-1].get("rfid_tag", "")
-        return ""
+        if not sessions or sessions[-1]["status"] != "in_progress":
+            return ""
+        s = sessions[-1]
+        # Reject stale in-progress sessions (not properly closed by a previous run)
+        try:
+            age_s = (_datetime.now() - _datetime.fromisoformat(s["started_at"])).total_seconds()
+            if age_s > 300:  # older than 5 minutes → stale record, ignore
+                log.debug(
+                    "Alfen HTTP: ignoring stale in-progress session started %ds ago",
+                    int(age_s),
+                )
+                return ""
+        except (ValueError, KeyError):
+            pass
+        return s.get("rfid_tag", "")
 
     def read_transactions(self) -> list[dict]:
         """

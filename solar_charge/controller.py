@@ -92,6 +92,7 @@ class ControllerState:
     """Mutable state carried between poll cycles (internal to controller)."""
     current_setpoint_a: float = 0.0
     charging_active: bool = False
+    session_start_wh: float = 0.0   # Wallbox lifetime-energy reading when the current session began
 
 
 class Controller:
@@ -452,6 +453,7 @@ class Controller:
                 )
                 internal.charging_active = True
                 session_just_started = True
+                internal.session_start_wh = alfen_snap.meter_wh if alfen_snap is not None else 0.0
             else:
                 log.debug(
                     "Surplus %.0f W (%.2f A) below start threshold %.1f A -- idle",
@@ -483,6 +485,7 @@ class Controller:
                     app.target_a = target_a
                     app.setpoint_a = 0.0
                     app.charging_active = False
+                    app.session_kwh = 0.0
                     app.last_updated = datetime.now()
                 return
 
@@ -529,6 +532,8 @@ class Controller:
             app.target_a = target_a
             app.setpoint_a = new_setpoint_a
             app.charging_active = internal.charging_active
+            if alfen_snap is not None and internal.session_start_wh > 0:
+                app.session_kwh = max(0.0, (alfen_snap.meter_wh - internal.session_start_wh) / 1000.0)
             app.last_updated = datetime.now()
 
         # (timeseries sample is recorded in _poll_cycle after this method returns)

@@ -92,6 +92,7 @@ class AlfenState:
     status: ChargeStatus     # Simplified enum
     active_power_w: float    # Current charging power (W)
     current_setpoint_a: float  # Current max-current setpoint (A); 0 = disabled
+    meter_wh: float = 0.0    # Lifetime energy meter reading (Wh)
 
 
 class AlfenClient:
@@ -190,6 +191,23 @@ class AlfenClient:
                 raise ModbusException(f"Error reading current setpoint: {current_result}")
             current_setpoint_a = _unpack_float32(current_result.registers)
 
+            # Lifetime energy meter (float64, 4 registers) — non-fatal if missing
+            try:
+                energy_result = client.read_holding_registers(
+                    address=_REG_TOTAL_ENERGY, count=4, slave=self._slave_id
+                )
+                if energy_result.isError():
+                    log.warning("Alfen: could not read energy meter: %s", energy_result)
+                    meter_wh = 0.0
+                    energy_regs: list = []
+                else:
+                    raw_energy = b"".join(r.to_bytes(2, "big") for r in energy_result.registers)
+                    meter_wh = struct.unpack(">d", raw_energy)[0]
+                    energy_regs = list(energy_result.registers)
+            except ModbusException:
+                meter_wh = 0.0
+                energy_regs = []
+
         except ModbusException as exc:
             log.error("Alfen Modbus read error: %s", exc)
             raise
@@ -221,6 +239,13 @@ class AlfenClient:
                 "decoded_value": round(current_setpoint_a, 2),
                 "unit": "A",
             },
+            {
+                "register": _REG_TOTAL_ENERGY,
+                "label": "LifetimeEnergy",
+                "raw_registers": energy_regs,
+                "decoded_value": round(meter_wh, 1),
+                "unit": "Wh",
+            },
         ]
 
         state = AlfenState(
@@ -228,6 +253,7 @@ class AlfenClient:
             status=charge_status,
             active_power_w=active_power_w,
             current_setpoint_a=current_setpoint_a,
+            meter_wh=meter_wh,
         )
 
         log.debug(

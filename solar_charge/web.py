@@ -160,7 +160,7 @@ def create_app(
             override_active=ov.is_active,
             override_current_a=ov.current_a if ov.is_active else None,
             override_until=ov.until.isoformat() if (ov.is_active and ov.until) else None,
-            session_kwh=app_state.history.current_session_kwh if app_state.history else 0.0,
+            session_kwh=app_state.session_kwh,
             guard_enabled=gs.enabled if gs else False,
             guard_active=gs.active if gs else False,
             guard_factor=gs.surplus_factor if gs else 1.0,
@@ -589,6 +589,10 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
         <span class="s-label">Wallbox State <span class="tip tip-right" data-tip="Raw status reported by the Alfen firmware, e.g. Charging Normal, EV Connected, Available.">i</span></span>
         <span class="s-value" id="wb-state">—</span>
       </div>
+      <div class="stat">
+        <span class="s-label">Session <span class="tip tip-right" data-tip="Energy delivered to the EV in the current charging session, read from the wallbox meter.">i</span></span>
+        <span class="s-value" id="session-kwh">— kWh</span>
+      </div>
     </div>
   </div>
 
@@ -920,6 +924,7 @@ function applyStatus(d) {{
     d.setpoint_a.toFixed(1) + ' A (' + setpointKw.toFixed(1) + ' kW)';
   document.getElementById('wb-power').textContent = fmt(d.wallbox_power_w) + ' W';
   document.getElementById('wb-state').textContent = d.car_status_raw || '—';
+  document.getElementById('session-kwh').textContent = d.charging_active && d.session_kwh > 0 ? d.session_kwh.toFixed(2) + ' kWh' : '—';
 
   const badge = document.getElementById('car-badge');
   let bc = 'badge-no-vehicle', bt = d.car_status;

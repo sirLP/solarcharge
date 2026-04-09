@@ -76,6 +76,7 @@ class AppState:
     target_a: float = 0.0
     setpoint_a: float = 0.0
     charging_active: bool = False
+    session_kwh: float = 0.0   # Energy delivered in the current session (wallbox meter)
 
     # Battery guard status (None when guard is disabled)
     guard_status: "GuardStatus | None" = None

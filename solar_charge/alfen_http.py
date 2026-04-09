@@ -485,10 +485,12 @@ class AlfenHTTPClient:
         status_raw   = self._get_prop(_PARAM_STATUS)
         power_raw    = self._get_prop(_PARAM_POWER_W)
         setpoint_raw = self._get_prop(_PARAM_MAX_A)
+        energy_raw   = self._get_prop(_PARAM_ENERGY_WH)
 
         status_code = int(status_raw)   if status_raw   is not None else 0
         power_w     = float(power_raw)  if power_raw    is not None else 0.0
         setpoint_a  = float(setpoint_raw) if setpoint_raw is not None else 0.0
+        meter_wh    = float(energy_raw) if energy_raw   is not None else 0.0
 
         status_label, charge_status = _decode_status(status_code)
 
@@ -513,6 +515,13 @@ class AlfenHTTPClient:
                 "decoded_value": str(round(setpoint_a, 2)),
                 "unit":          "A",
             },
+            {
+                "register":      _PARAM_ENERGY_WH,
+                "label":         "LifetimeEnergy",
+                "raw_hex":       str(round(meter_wh, 1)),
+                "decoded_value": str(round(meter_wh, 1)),
+                "unit":          "Wh",
+            },
         ]
 
         state = AlfenState(
@@ -520,6 +529,7 @@ class AlfenHTTPClient:
             status=charge_status,
             active_power_w=power_w,
             current_setpoint_a=setpoint_a,
+            meter_wh=meter_wh,
         )
         log.debug(
             "Alfen HTTP: status=%s (%s)  power=%.0f W  setpoint=%.1f A",

@@ -121,6 +121,7 @@ class Controller:
         self._history = history
         self._timeseries = timeseries
         self._prev_wallbox_charging: bool = False  # wallbox ChargeStatus.CHARGING last cycle
+        self._prev_car_present: bool = False        # car connected (CONNECTED or CHARGING) last cycle
         self._rfid_session_validated: bool = False  # True once RFID cleared for current session
         self._rfid_session_tag: str = ""           # UID of the validated card for the current session
         self._calc_only = not bool(config.alfen_host)
@@ -223,13 +224,22 @@ class Controller:
     #  Internal helpers                                                    #
     # ------------------------------------------------------------------ #
 
-    async def _update_session(self, was_charging: bool, is_charging: bool) -> None:
+    async def _update_session(
+        self,
+        was_charging: bool,
+        is_charging: bool,
+        was_car_present: bool,
+        car_present: bool,
+    ) -> None:
         """Detect charging start/stop transitions and maintain session history."""
 
         # ── RFID guard (independent of session history) ────────────────
-        # Re-attempt on every cycle until validated so that timing issues
-        # (e.g. Alfen hasn't written txstart2 yet) are automatically retried.
-        if is_charging and not self._rfid_session_validated and self._cfg.rfid_enabled:
+        # Fire as soon as a car is present (CONNECTED or CHARGING) so the
+        # guard can block the session even while SolarCharge is still at 0 A
+        # waiting for solar surplus (Alfen "Authorized" / "EV Connected" etc.).
+        # Re-attempt every cycle until validated to handle the window where
+        # Alfen hasn't written txstart2 yet.
+        if car_present and not self._rfid_session_validated and self._cfg.rfid_enabled:
             rfid_for_guard = ""
             if self._alfen and not self._calc_only:
                 try:
@@ -242,6 +252,12 @@ class Controller:
             if self._cfg.rfid_allowlist:
                 rfid_upper = rfid_for_guard.upper() if rfid_for_guard else ""
                 if rfid_upper not in self._cfg.rfid_allowlist:
+                    if not rfid_for_guard:
+                        # Tag not readable yet (txstart2 not written) — hold at 0 A
+                        # and retry next cycle without recording a blocked attempt.
+                        log.debug("RFID guard: no tag readable yet, holding at 0 A")
+                        await self._write_alfen(0.0)
+                        return
                     _blocked_name = next(
                         (c["name"] for c in self._cfg.rfid_cards if c["uid"] == rfid_upper),
                         None,
@@ -325,6 +341,10 @@ class Controller:
             )
             self._rfid_session_validated = False  # reset for next session
             self._rfid_session_tag = ""
+        if was_car_present and not car_present:
+            # ── Car disconnected (may not have reached CHARGING state) ─
+            self._rfid_session_validated = False
+            self._rfid_session_tag = ""
             energy_wh = None
             if self._alfen and not self._calc_only:
                 try:
@@ -375,6 +395,7 @@ class Controller:
     async def _poll_cycle(self) -> None:
         """Wrap _do_poll_cycle with session-history tracking."""
         prev_wb_charging = self._prev_wallbox_charging
+        prev_car_present = self._prev_car_present
         try:
             await self._do_poll_cycle()
         finally:
@@ -385,8 +406,16 @@ class Controller:
             cur_wb_charging = (
                 alfen is not None and alfen.status == ChargeStatus.CHARGING
             ) if not self._calc_only else self._internal.charging_active
-            await self._update_session(prev_wb_charging, cur_wb_charging)
+            cur_car_present = (
+                alfen is not None
+                and alfen.status in (ChargeStatus.CONNECTED, ChargeStatus.CHARGING)
+            ) if not self._calc_only else self._internal.charging_active
+            await self._update_session(
+                prev_wb_charging, cur_wb_charging,
+                prev_car_present, cur_car_present,
+            )
             self._prev_wallbox_charging = cur_wb_charging
+            self._prev_car_present = cur_car_present
             # Record timeseries sample from app_state (works regardless of which
             # branch _do_poll_cycle took, including all early-return paths).
             if self._timeseries is not None:

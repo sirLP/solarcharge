@@ -212,7 +212,7 @@ def create_app(
             raw: dict[str, Any] = tomllib.load(fh)
         raw["rfid"] = {
             "enabled": config.rfid_enabled,
-            "cards": config.rfid_cards,
+            "card": config.rfid_cards,
         }
         with config_path.open("wb") as fh:
             tomli_w.dump(raw, fh)

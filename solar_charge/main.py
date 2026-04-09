@@ -110,7 +110,7 @@ def _parse_rfid(raw: dict) -> dict:
     """Parse the optional [rfid] section; returns kwargs for ControllerConfig."""
     cards: list[dict] = [
         {"uid": str(c["uid"]).upper().strip(), "name": str(c.get("name", ""))}
-        for c in raw.get("cards", [])
+        for c in raw.get("card", [])
         if "uid" in c
     ]
     return {

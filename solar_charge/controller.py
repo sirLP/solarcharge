@@ -122,6 +122,7 @@ class Controller:
         self._timeseries = timeseries
         self._prev_wallbox_charging: bool = False  # wallbox ChargeStatus.CHARGING last cycle
         self._rfid_session_validated: bool = False  # True once RFID cleared for current session
+        self._rfid_session_tag: str = ""           # UID of the validated card for the current session
         self._calc_only = not bool(config.alfen_host)
 
         self._senec = SenecClient(
@@ -241,29 +242,34 @@ class Controller:
             if self._cfg.rfid_allowlist:
                 rfid_upper = rfid_for_guard.upper() if rfid_for_guard else ""
                 if rfid_upper not in self._cfg.rfid_allowlist:
-                    log.warning(
-                        "RFID guard: tag %r not in allowlist — stopping charge",
-                        rfid_for_guard or "<none>",
-                    )
-                    known_name = next(
+                    _blocked_name = next(
                         (c["name"] for c in self._cfg.rfid_cards if c["uid"] == rfid_upper),
                         None,
+                    )
+                    log.warning(
+                        "RFID scan started  — uid=%s  name=%s  result=DENIED (not in allowlist)",
+                        rfid_for_guard or "<none>",
+                        _blocked_name or "<unknown>",
                     )
                     self._app_state.rfid_blocked_log.appendleft({
                         "ts":   datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "uid":  rfid_for_guard or "<none>",
-                        "name": known_name or "",
+                        "name": _blocked_name or "",
                     })
                     await self._write_alfen(0.0)
                     return  # do not start/continue session
                 else:
                     # Tag is valid — mark session as validated so we don't recheck
+                    _card_name = next(
+                        (c["name"] for c in self._cfg.rfid_cards if c["uid"] == rfid_upper), ""
+                    )
                     log.info(
-                        "RFID guard: tag %r authorised (%s)",
-                        rfid_for_guard,
-                        next((c["name"] for c in self._cfg.rfid_cards if c["uid"] == rfid_upper), ""),
+                        "RFID scan started  — uid=%s  name=%s  result=AUTHORISED",
+                        rfid_for_guard or "<none>",
+                        _card_name or "<unknown>",
                     )
                     self._rfid_session_validated = True
+                    self._rfid_session_tag = rfid_for_guard
             else:
                 # No cards configured — guard enabled but empty list; block everything
                 log.warning(
@@ -295,10 +301,30 @@ class Controller:
 
             h.start_session(rfid)
             h.set_start_energy(energy_wh)
+            if not self._cfg.rfid_enabled:
+                _card_name = next(
+                    (c["name"] for c in self._cfg.rfid_cards
+                     if c["uid"] == rfid.upper()), ""
+                ) if rfid else ""
+                log.info(
+                    "RFID scan started  — uid=%s  name=%s  result=NOT_ENFORCED",
+                    rfid or "<none>",
+                    _card_name or "<unknown>",
+                )
 
         elif was_charging and not is_charging:
             # ── Session just ended ─────────────────────────────────────
+            _end_name = next(
+                (c["name"] for c in self._cfg.rfid_cards
+                 if c["uid"] == self._rfid_session_tag.upper()), ""
+            ) if self._rfid_session_tag else ""
+            log.info(
+                "RFID scan ended    — uid=%s  name=%s",
+                self._rfid_session_tag or "<none>",
+                _end_name or "<unknown>",
+            )
             self._rfid_session_validated = False  # reset for next session
+            self._rfid_session_tag = ""
             energy_wh = None
             if self._alfen and not self._calc_only:
                 try:

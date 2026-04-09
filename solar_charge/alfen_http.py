@@ -37,7 +37,7 @@ import json
 import logging
 import re as _re
 import ssl
-from datetime import datetime as _datetime
+from datetime import datetime as _datetime, timezone as _timezone
 from typing import Union
 
 from solar_charge.alfen import AlfenState, ChargeStatus
@@ -51,6 +51,20 @@ _RE_TXRECORD = _re.compile(
     r'(\d+)_(txstart2|txstop2): id (0x[0-9a-fA-F]+|Unknown), socket (\d+), '
     r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) ([\d.]+)kWh (\S+)'
 )
+
+
+def _utc_to_local(ts_str: str) -> str:
+    """
+    Convert a naive UTC timestamp string (``YYYY-MM-DD HH:MM:SS``) from the
+    Alfen transaction log to local wall-clock time using the system timezone.
+    Returns in the same ``YYYY-MM-DD HH:MM:SS`` format.
+    """
+    try:
+        utc_dt = _datetime.fromisoformat(ts_str).replace(tzinfo=_timezone.utc)
+        local_dt = utc_dt.astimezone()          # system local timezone
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, OverflowError):
+        return ts_str  # fall back to raw value on parse error
 
 
 def _parse_transactions(raw: str) -> list[dict]:
@@ -69,7 +83,7 @@ def _parse_transactions(raw: str) -> list[dict]:
         events.append({
             "offset":     int(offset),
             "type":       evt_type,
-            "ts_str":     ts_str,
+            "ts_str":     _utc_to_local(ts_str),  # Alfen log is UTC → convert to local
             "energy_kwh": float(energy_kwh),
             "rfid":       rfid_clean,
         })

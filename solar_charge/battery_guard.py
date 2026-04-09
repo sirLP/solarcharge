@@ -100,6 +100,12 @@ class BatteryGuardConfig:
     # regardless of current SOC vs required SOC.
     battery_max_charge_w: float = 2500.0  # W — adjust to your battery's max charge rate
 
+    # Binary (Full-or-Off) mode: when True the guard does not apply a linear
+    # factor — it allows the full EV surplus when SOC ≥ required, or blocks
+    # charging entirely when SOC < required.  Can be toggled live from the
+    # web UI without restarting.
+    binary_mode: bool = False
+
     # Internal — not user-settable
     _weather_cache_ts: float = field(default=0.0,   repr=False)
     _weather_cloud_pct: float | None = field(default=None, repr=False)
@@ -115,6 +121,7 @@ class GuardStatus:
     enabled: bool = False
     active: bool = False             # True when guard is actually reducing surplus
     surplus_factor: float = 1.0      # multiplier applied to EV surplus (0 – 1)
+    binary_mode: bool = False        # True → full-or-off (no linear factor)
     required_soc_pct: float = 0.0    # required SOC right now
     current_soc_pct: float = 0.0     # actual battery SOC
     sunset_local: str = ""           # e.g. "19:47"
@@ -416,7 +423,13 @@ class BatteryGuard:
         required_soc = round(min(100.0, max(0.0, required_soc)), 1)
 
         # ── Surplus factor ───────────────────────────────────────────────
-        factor = self._surplus_factor(battery_soc_pct, required_soc, hard_min)
+        if cfg.binary_mode:
+            # Full-or-Off: either charge at full surplus or not at all.
+            # No linear reduction — the EV gets maximum power while
+            # solar is high, and stops when the battery needs protection.
+            factor = 1.0 if battery_soc_pct >= required_soc else 0.0
+        else:
+            factor = self._surplus_factor(battery_soc_pct, required_soc, hard_min)
 
         # ── Battery cap overflow ─────────────────────────────────────────
         # If the battery is already charging at (or near) its maximum rate,
@@ -457,6 +470,7 @@ class BatteryGuard:
             enabled=True,
             active=active,
             surplus_factor=round(factor, 3),
+            binary_mode=cfg.binary_mode,
             required_soc_pct=required_soc,
             current_soc_pct=round(battery_soc_pct, 1),
             sunset_local=sunset_str,

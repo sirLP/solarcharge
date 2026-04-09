@@ -60,6 +60,7 @@ class StatusResponse(BaseModel):
     guard_enabled: bool
     guard_active: bool
     guard_factor: float
+    guard_binary_mode: bool
     guard_required_soc: float
     guard_sunset: str
     guard_sunrise: str
@@ -97,6 +98,10 @@ class OverrideRequest(BaseModel):
     action: str                        # "set_current" | "resume"
     current_a: float | None = None     # required when action = "set_current"
     duration_minutes: float | None = None  # None = indefinite
+
+
+class GuardUpdateRequest(BaseModel):
+    binary_mode: bool | None = None    # toggle Full-or-Off mode
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -159,6 +164,7 @@ def create_app(
             guard_enabled=gs.enabled if gs else False,
             guard_active=gs.active if gs else False,
             guard_factor=gs.surplus_factor if gs else 1.0,
+            guard_binary_mode=gs.binary_mode if gs else False,
             guard_required_soc=gs.required_soc_pct if gs else 0.0,
             guard_sunset=gs.sunset_local if gs else "",
             guard_sunrise=gs.sunrise_local if gs else "",
@@ -176,6 +182,17 @@ def create_app(
         raw["control"]["stop_threshold_a"] = config.stop_threshold_a
         raw["control"]["ramp_step_a"] = config.ramp_step_a
         raw["senec"]["poll_interval_s"] = config.poll_interval_s
+        with config_path.open("wb") as fh:
+            tomli_w.dump(raw, fh)
+
+    def _persist_guard_config() -> None:
+        """Write the current [battery_guard] runtime settings back to TOML."""
+        if config.battery_guard is None:
+            return
+        with config_path.open("rb") as fh:
+            raw: dict[str, Any] = tomllib.load(fh)
+        raw.setdefault("battery_guard", {})
+        raw["battery_guard"]["binary_mode"] = config.battery_guard.binary_mode
         with config_path.open("wb") as fh:
             tomli_w.dump(raw, fh)
 
@@ -243,6 +260,20 @@ def create_app(
             return {"ok": True, "message": label}
 
         raise HTTPException(400, f"Unknown action: {req.action!r}")
+
+    @app.post("/api/guard")
+    async def update_guard(req: GuardUpdateRequest) -> dict:
+        """Toggle Battery Guard runtime options (persisted to TOML)."""
+        if config.battery_guard is None:
+            raise HTTPException(404, "Battery Guard is not configured")
+        if req.binary_mode is not None:
+            config.battery_guard.binary_mode = req.binary_mode
+            # Reflect the change immediately in the live guard status
+            if app_state.guard_status is not None:
+                app_state.guard_status.binary_mode = req.binary_mode
+        _persist_guard_config()
+        mode = "Full-or-Off" if config.battery_guard.binary_mode else "Linear factor"
+        return {"ok": True, "message": f"Battery Guard mode set to: {mode}"}
 
     @app.get("/api/diagnostics")
     async def get_diagnostics() -> dict:
@@ -466,6 +497,15 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
   .guard-badge-warn {{ background:#fefcbf; color:#744210; }}
   .guard-badge-limit {{ background:#fed7d7; color:#742a2a; }}
   .guard-meta {{ font-size:.72rem; color:var(--muted); margin-top:.35rem; line-height:1.5; }}
+  /* ── Toggle switch ───────────────────────────────────────── */
+  .toggle {{ position:relative; display:inline-block; width:2.2rem; height:1.2rem; flex-shrink:0; }}
+  .toggle input {{ opacity:0; width:0; height:0; }}
+  .toggle-slider {{ position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+    background:#cbd5e0; border-radius:1rem; transition:background .2s; }}
+  .toggle-slider:before {{ content:''; position:absolute; height:.85rem; width:.85rem;
+    bottom:.18rem; left:.18rem; background:#fff; border-radius:50%; transition:transform .2s; }}
+  input:checked + .toggle-slider {{ background:#48bb78; }}
+  input:checked + .toggle-slider:before {{ transform:translateX(1rem); }}
   @media (max-width: 500px) {{ .form-grid {{ grid-template-columns: 1fr; }} }}
   /* ── Tooltips ────────────────────────────────────────────────── */
   .tip {{ display:inline-flex; align-items:center; justify-content:center;
@@ -567,8 +607,12 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
       <span id="guard-soc-req" style="font-weight:700;font-size:.85rem;min-width:2.5rem">—%</span>
     </div>
     <div class="guard-row" style="margin-top:.4rem">
-      <span style="font-size:.75rem;color:var(--muted)">Surplus factor</span>
-      <strong id="guard-factor" style="font-size:.9rem">1.00 &times;</strong>
+      <span style="font-size:.75rem;color:var(--muted)">Full-or-Off <span class="tip" data-tip="When enabled: EV gets the full solar surplus if the battery SoC meets the required level, or nothing at all if it doesn't. Replaces the gradual linear factor.">i</span></span>
+      <label class="toggle" style="margin:0">
+        <input type="checkbox" id="guard-binary-toggle" onchange="setGuardBinaryMode(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+      <span id="guard-factor-label" style="font-size:.75rem;color:var(--muted)"></span>
       <span style="margin-left:auto;font-size:.75rem;color:var(--muted)" id="guard-sun">🌅 — &nbsp; 🌇 —</span>
     </div>
     <div class="guard-meta" id="guard-reason"></div>
@@ -718,11 +762,21 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
         <h4>Guard values</h4>
         <table class="reg-table">
           <tbody>
-            <tr><td>Surplus factor</td><td><strong id="gm-factor">—</strong></td></tr>
-            <tr><td>Sunrise</td><td id="gm-sunrise">—</td></tr>
-            <tr><td>Effective sunset</td><td id="gm-sunset">—</td></tr>
-            <tr><td>Cloud cover</td><td id="gm-cloud">—</td></tr>
-            <tr><td>Seasonal correction</td><td id="gm-seasonal">—</td></tr>
+            <tr>
+              <td>Mode <span class="tip" data-tip="Full-or-Off: EV gets the full surplus or nothing. Linear: surplus scales gradually with SoC.">i</span></td>
+              <td><strong id="gm-mode">Linear factor</strong></td>
+              <td style="text-align:right">
+                <label class="toggle" style="margin:0">
+                  <input type="checkbox" id="gm-binary-toggle" onchange="setGuardBinaryMode(this.checked)">
+                  <span class="toggle-slider"></span>
+                </label>
+              </td>
+            </tr>
+            <tr><td>Surplus factor</td><td><strong id="gm-factor">—</strong></td><td></td></tr>
+            <tr><td>Sunrise</td><td id="gm-sunrise">—</td><td></td></tr>
+            <tr><td>Effective sunset</td><td id="gm-sunset">—</td><td></td></tr>
+            <tr><td>Cloud cover</td><td id="gm-cloud">—</td><td></td></tr>
+            <tr><td>Seasonal correction</td><td id="gm-seasonal">—</td><td></td></tr>
           </tbody>
         </table>
       </div>
@@ -739,8 +793,12 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
           configurable number of hours before (effective) sunset, the required SoC ramps
           linearly up to the <em>night reserve</em> target. Heavy cloud cover advances the
           effective sunset. A winter seasonal correction raises both targets in the darker
-          months. The <em>surplus factor</em> scales linearly from 0&times; at the hard
-          minimum floor up to 1&times; once the required SoC is met.
+          months.<br><br>
+          In <strong>Linear factor</strong> mode the surplus scales gradually from 0&times;
+          at the hard minimum floor to 1&times; once the required SoC is met.
+          In <strong>Full-or-Off</strong> mode the EV receives the full surplus when
+          the required SoC is met, or nothing at all when the battery needs protection
+          &mdash; maximising charging power during high-solar periods.
         </p>
       </div>
 
@@ -892,9 +950,19 @@ function applyStatus(d) {{
     const cur = d.battery_soc_pct;
     const req = d.guard_required_soc;
     const factor = d.guard_factor;
+    const binary = d.guard_binary_mode;
     document.getElementById('guard-soc-cur').textContent = cur.toFixed(0) + '%';
     document.getElementById('guard-soc-req').textContent = req.toFixed(0) + '%';
-    document.getElementById('guard-factor').innerHTML = factor.toFixed(2) + ' &times;';
+    // toggle state (avoid triggering onchange)
+    const bt = document.getElementById('guard-binary-toggle');
+    if (bt.checked !== binary) bt.checked = binary;
+    // factor label next to toggle
+    const fl = document.getElementById('guard-factor-label');
+    if (binary) {{
+      fl.textContent = factor >= 1 ? 'Full surplus' : 'Blocked';
+    }} else {{
+      fl.textContent = 'factor ' + factor.toFixed(2) + '\u00d7';
+    }}
     // bar shows current SOC relative to required
     const barPct = req > 0 ? Math.min(100, (cur / req) * 100) : 100;
     const fill = document.getElementById('guard-bar-fill');
@@ -920,6 +988,7 @@ function applyStatus(d) {{
 
 function _refreshGuardModal(d) {{
   const factor = d.guard_factor;
+  const binary = d.guard_binary_mode;
   const cur = d.battery_soc_pct;
   const req = d.guard_required_soc;
   const badge = document.getElementById('gm-badge');
@@ -929,20 +998,26 @@ function _refreshGuardModal(d) {{
   document.getElementById('gm-soc-cur').textContent = cur.toFixed(0) + '%';
   document.getElementById('gm-soc-req').textContent = req.toFixed(0) + '%';
   document.getElementById('gm-factor').innerHTML = factor.toFixed(2) + ' &times;';
+  // sync both toggles
+  const bt = document.getElementById('guard-binary-toggle');
+  const gmt = document.getElementById('gm-binary-toggle');
+  if (bt.checked !== binary) bt.checked = binary;
+  if (gmt.checked !== binary) gmt.checked = binary;
+  document.getElementById('gm-mode').textContent = binary ? 'Full-or-Off' : 'Linear factor';
   const barPct = req > 0 ? Math.min(100, (cur / req) * 100) : 100;
   const fill = document.getElementById('gm-bar-fill');
   fill.style.width = barPct.toFixed(1) + '%';
   fill.style.background = factor >= 1 ? '#68d391' : factor > 0.3 ? '#f6ad55' : '#fc8181';
   const deficit = req - cur;
   document.getElementById('gm-bar-label').textContent =
-    deficit > 0 ? deficit.toFixed(0) + '% below required — guard active' : 'Battery meets required SoC';
-  document.getElementById('gm-sunrise').textContent = d.guard_sunrise || '—';
-  document.getElementById('gm-sunset').textContent = d.guard_sunset || '—';
+    deficit > 0 ? deficit.toFixed(0) + '% below required \u2014 guard active' : 'Battery meets required SoC';
+  document.getElementById('gm-sunrise').textContent = d.guard_sunrise || '\u2014';
+  document.getElementById('gm-sunset').textContent = d.guard_sunset || '\u2014';
   document.getElementById('gm-cloud').textContent =
     d.guard_cloud_pct !== null ? d.guard_cloud_pct.toFixed(0) + '%' : 'n/a (forecast disabled)';
   document.getElementById('gm-seasonal').textContent =
     d.guard_seasonal_extra > 0 ? '+' + d.guard_seasonal_extra.toFixed(1) + '%' : 'none (summer)';
-  document.getElementById('gm-reason').textContent = d.guard_reason || '—';
+  document.getElementById('gm-reason').textContent = d.guard_reason || '\u2014';
 }}
 
 function openGuard() {{
@@ -950,6 +1025,24 @@ function openGuard() {{
 }}
 function closeGuard() {{
   document.getElementById('guard-overlay').classList.remove('open');
+}}
+
+async function setGuardBinaryMode(enabled) {{
+  // Keep both toggles in sync immediately (avoid flicker from the next poll)
+  document.getElementById('guard-binary-toggle').checked = enabled;
+  document.getElementById('gm-binary-toggle').checked = enabled;
+  const r = await fetch('/api/guard', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{binary_mode: enabled}}),
+  }});
+  if (!r.ok) {{
+    console.warn('Failed to update guard mode');
+    // Revert on failure
+    document.getElementById('guard-binary-toggle').checked = !enabled;
+    document.getElementById('gm-binary-toggle').checked = !enabled;
+  }}
+  fetchStatus();
 }}
 
 async function fetchConfig() {{

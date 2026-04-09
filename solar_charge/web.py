@@ -784,11 +784,14 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
           linearly up to the <em>night reserve</em> target. Heavy cloud cover advances the
           effective sunset. A winter seasonal correction raises both targets in the darker
           months.<br><br>
-          In <strong>Linear factor</strong> mode the surplus scales gradually from 0&times;
-          at the hard minimum floor to 1&times; once the required SoC is met.
-          In <strong>Full-or-Off</strong> mode the EV receives the full surplus when
-          the required SoC is met, or nothing at all when the battery needs protection
-          &mdash; maximising charging power during high-solar periods.
+          The <strong>Linear Factor</strong> toggle controls how surplus is applied when
+          the battery SoC is below the required target.<br>
+          <strong>On</strong> &mdash; surplus scales gradually from 0&times; at the hard
+          minimum floor to 1&times; once the required SoC is met, giving smooth
+          proportional charging.<br>
+          <strong>Off</strong> &mdash; Full-or-Off mode: the EV receives the full surplus
+          when the required SoC is met, or nothing at all when the battery needs
+          protection &mdash; maximising charging power during high-solar periods.
         </p>
       </div>
 

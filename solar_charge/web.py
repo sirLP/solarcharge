@@ -337,6 +337,36 @@ def create_app(
         try:
             loop = asyncio.get_event_loop()
             sessions = await loop.run_in_executor(None, client.read_transactions)
+
+            # If the last session is still flagged in-progress but the wallbox
+            # reports no vehicle present, Alfen never emitted a txstop2 (e.g.
+            # SolarCharge reduced current to 0 and the driver unplugged without
+            # swiping the RFID card again).  Synthesise the end-of-session
+            # figures from the live meter reading so the UI shows a closed row.
+            alfen = app_state.alfen_state
+            if (
+                sessions
+                and sessions[-1]["status"] == "in_progress"
+                and alfen is not None
+                and alfen.status == ChargeStatus.NO_VEHICLE
+            ):
+                s = sessions[-1]
+                stop_kwh = round(alfen.meter_wh / 1000.0, 3)
+                start_kwh: float = s.get("start_meter_kwh") or 0.0
+                energy_kwh = round(max(0.0, stop_kwh - start_kwh), 3)
+                try:
+                    started = datetime.fromisoformat(s["started_at"])
+                    duration_s: float | None = round((datetime.now() - started).total_seconds())
+                except (ValueError, KeyError):
+                    duration_s = None
+                s.update(
+                    status="completed",
+                    ended_at=datetime.now().isoformat(timespec="seconds"),
+                    stop_meter_kwh=stop_kwh,
+                    energy_kwh=energy_kwh,
+                    duration_s=duration_s,
+                )
+
             return {"sessions": sessions, "error": None}
         except Exception as exc:  # noqa: BLE001
             return {"sessions": [], "error": str(exc)}

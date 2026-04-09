@@ -10,3 +10,4 @@ venv/
 config.toml
 db/*
 !db/.gitkeep
+.vscode/

@@ -688,13 +688,13 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
 
   <div id="rfid-panel" class="panel" style="display:none">
     <h3>RFID Card Guard <span class="tip" data-tip="When enabled, only cars presenting a listed RFID card may charge. Any vehicle with an unknown or unlisted card is stopped immediately.">i</span>
-      <label class="toggle" style="margin-left:auto;display:flex;align-items:center;gap:.4rem">
+      <span style="margin-left:auto;display:flex;align-items:center;gap:.4rem">
         <span style="font-size:.75rem;color:var(--muted)">Enforce</span>
         <label class="toggle" style="margin:0">
           <input type="checkbox" id="rfid-enabled-toggle" onchange="setRfidEnabled(this.checked)">
           <span class="toggle-slider"></span>
         </label>
-      </label>
+      </span>
     </h3>
     <div id="rfid-card-list" style="margin:.35rem 0 .5rem 0"></div>
     <div id="rfid-blocked" style="margin-top:.4rem;display:none">

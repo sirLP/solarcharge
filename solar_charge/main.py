@@ -64,6 +64,7 @@ def _load_config(path: Path) -> tuple[ControllerConfig, str, int]:
 
     max_a = float(alfen.get("max_current_a", 16))
     min_a = float(alfen.get("min_current_a", 6))
+    release_a = float(alfen.get("release_current_a", 32))
     start_a = float(ctrl.get("start_threshold_a", 7))
     stop_a  = float(ctrl.get("stop_threshold_a", 5))
 
@@ -77,6 +78,8 @@ def _load_config(path: Path) -> tuple[ControllerConfig, str, int]:
         )
     if max_a > 32:
         raise ValueError(f"max_current_a={max_a} looks unreasonably high (max 32 A)")
+    if release_a > 32:
+        raise ValueError(f"release_current_a={release_a} looks unreasonably high (max 32 A)")
 
     ctrl_config = ControllerConfig(
         senec_host=senec.get("host", ""),
@@ -92,6 +95,7 @@ def _load_config(path: Path) -> tuple[ControllerConfig, str, int]:
         voltage_per_phase=float(alfen.get("voltage_per_phase", 230)),
         max_current_a=max_a,
         min_current_a=min_a,
+        release_current_a=release_a,
         start_threshold_a=start_a,
         stop_threshold_a=stop_a,
         ramp_step_a=float(ctrl.get("ramp_step_a", 1)),

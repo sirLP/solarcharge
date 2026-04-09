@@ -16,6 +16,7 @@ phases            = 3
 voltage_per_phase = 230
 max_current_a     = 16             # 16 A × 3 phases × 230 V ≈ 11 kW
 min_current_a     = 6              # IEC 61851 minimum — do not set below 6
+release_current_a = 32             # current written on shutdown so wallbox returns to standalone (default: 32 A)
 port              = 502            # Modbus TCP port (modbus mode only)
 slave_id          = 1              # Modbus slave ID (modbus mode only)
 heartbeat_interval_s = 25

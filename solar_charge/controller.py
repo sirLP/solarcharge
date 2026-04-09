@@ -77,6 +77,7 @@ class ControllerConfig:
     voltage_per_phase: float
     max_current_a: float
     min_current_a: float
+    release_current_a: float    # current written on shutdown to return wallbox to standalone
 
     # Control
     start_threshold_a: float
@@ -198,16 +199,16 @@ class Controller:
                 await asyncio.sleep(self._cfg.poll_interval_s)
 
     async def stop(self) -> None:
-        """Gracefully stop: restore wallbox to max current and close connections."""
-        max_a = self._cfg.max_current_a
-        log.info("Shutting down -- restoring wallbox to %.0f A (unlimited)", max_a)
+        """Gracefully stop: restore wallbox to release current and close connections."""
+        release_a = self._cfg.release_current_a
+        log.info("Shutting down -- releasing wallbox to %.0f A (standalone)", release_a)
         if self._alfen and not self._calc_only:
             try:
                 await asyncio.get_event_loop().run_in_executor(
-                    None, self._alfen.set_current, max_a
+                    None, self._alfen.set_current, release_a
                 )
             except Exception as exc:  # noqa: BLE001
-                log.warning("Could not restore wallbox current on shutdown: %s", exc)
+                log.warning("Could not release wallbox current on shutdown: %s", exc)
             self._alfen.close()
         await self._senec.close()
 

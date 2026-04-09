@@ -60,7 +60,7 @@ class StatusResponse(BaseModel):
     guard_enabled: bool
     guard_active: bool
     guard_factor: float
-    guard_binary_mode: bool
+    guard_linear_mode: bool
     guard_required_soc: float
     guard_sunset: str
     guard_sunrise: str
@@ -101,7 +101,7 @@ class OverrideRequest(BaseModel):
 
 
 class GuardUpdateRequest(BaseModel):
-    binary_mode: bool | None = None    # toggle Full-or-Off mode
+    linear_mode: bool | None = None    # enable Linear Factor mode
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ def create_app(
             guard_enabled=gs.enabled if gs else False,
             guard_active=gs.active if gs else False,
             guard_factor=gs.surplus_factor if gs else 1.0,
-            guard_binary_mode=gs.binary_mode if gs else False,
+            guard_linear_mode=gs.linear_mode if gs else True,
             guard_required_soc=gs.required_soc_pct if gs else 0.0,
             guard_sunset=gs.sunset_local if gs else "",
             guard_sunrise=gs.sunrise_local if gs else "",
@@ -192,7 +192,7 @@ def create_app(
         with config_path.open("rb") as fh:
             raw: dict[str, Any] = tomllib.load(fh)
         raw.setdefault("battery_guard", {})
-        raw["battery_guard"]["binary_mode"] = config.battery_guard.binary_mode
+        raw["battery_guard"]["linear_mode"] = config.battery_guard.linear_mode
         with config_path.open("wb") as fh:
             tomli_w.dump(raw, fh)
 
@@ -266,13 +266,13 @@ def create_app(
         """Toggle Battery Guard runtime options (persisted to TOML)."""
         if config.battery_guard is None:
             raise HTTPException(404, "Battery Guard is not configured")
-        if req.binary_mode is not None:
-            config.battery_guard.binary_mode = req.binary_mode
+        if req.linear_mode is not None:
+            config.battery_guard.linear_mode = req.linear_mode
             # Reflect the change immediately in the live guard status
             if app_state.guard_status is not None:
-                app_state.guard_status.binary_mode = req.binary_mode
+                app_state.guard_status.linear_mode = req.linear_mode
         _persist_guard_config()
-        mode = "Full-or-Off" if config.battery_guard.binary_mode else "Linear factor"
+        mode = "Linear factor" if config.battery_guard.linear_mode else "Full-or-Off"
         return {"ok": True, "message": f"Battery Guard mode set to: {mode}"}
 
     @app.get("/api/diagnostics")
@@ -607,9 +607,9 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
       <span id="guard-soc-req" style="font-weight:700;font-size:.85rem;min-width:2.5rem">—%</span>
     </div>
     <div class="guard-row" style="margin-top:.4rem">
-      <span style="font-size:.75rem;color:var(--muted)">Full-or-Off <span class="tip" data-tip="When enabled: EV gets the full solar surplus if the battery SoC meets the required level, or nothing at all if it doesn't. Replaces the gradual linear factor.">i</span></span>
+      <span style="font-size:.75rem;color:var(--muted)">Linear Factor <span class="tip" data-tip="When on: EV surplus scales gradually with battery SoC (0–1 factor). When off: Full-or-Off — EV gets the full surplus or nothing at all.">i</span></span>
       <label class="toggle" style="margin:0">
-        <input type="checkbox" id="guard-binary-toggle" onchange="setGuardBinaryMode(this.checked)">
+        <input type="checkbox" id="guard-linear-toggle" onchange="setGuardLinearMode(this.checked)">
         <span class="toggle-slider"></span>
       </label>
       <span id="guard-factor-label" style="font-size:.75rem;color:var(--muted)"></span>
@@ -763,11 +763,11 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
         <table class="reg-table">
           <tbody>
             <tr>
-              <td>Mode <span class="tip" data-tip="Full-or-Off: EV gets the full surplus or nothing. Linear: surplus scales gradually with SoC.">i</span></td>
+              <td>Mode <span class="tip" data-tip="Linear Factor: surplus scales gradually with SoC (0–1). Full-or-Off: EV gets the full surplus or nothing.">i</span></td>
               <td><strong id="gm-mode">Linear factor</strong></td>
               <td style="text-align:right">
                 <label class="toggle" style="margin:0">
-                  <input type="checkbox" id="gm-binary-toggle" onchange="setGuardBinaryMode(this.checked)">
+                  <input type="checkbox" id="gm-linear-toggle" onchange="setGuardLinearMode(this.checked)">
                   <span class="toggle-slider"></span>
                 </label>
               </td>
@@ -950,15 +950,15 @@ function applyStatus(d) {{
     const cur = d.battery_soc_pct;
     const req = d.guard_required_soc;
     const factor = d.guard_factor;
-    const binary = d.guard_binary_mode;
+    const linear = d.guard_linear_mode;
     document.getElementById('guard-soc-cur').textContent = cur.toFixed(0) + '%';
     document.getElementById('guard-soc-req').textContent = req.toFixed(0) + '%';
     // toggle state (avoid triggering onchange)
-    const bt = document.getElementById('guard-binary-toggle');
-    if (bt.checked !== binary) bt.checked = binary;
+    const bt = document.getElementById('guard-linear-toggle');
+    if (bt.checked !== linear) bt.checked = linear;
     // factor label next to toggle
     const fl = document.getElementById('guard-factor-label');
-    if (binary) {{
+    if (!linear) {{
       fl.textContent = factor >= 1 ? 'Full surplus' : 'Blocked';
     }} else {{
       fl.textContent = 'factor ' + factor.toFixed(2) + '\u00d7';
@@ -988,7 +988,7 @@ function applyStatus(d) {{
 
 function _refreshGuardModal(d) {{
   const factor = d.guard_factor;
-  const binary = d.guard_binary_mode;
+  const linear = d.guard_linear_mode;
   const cur = d.battery_soc_pct;
   const req = d.guard_required_soc;
   const badge = document.getElementById('gm-badge');
@@ -999,11 +999,11 @@ function _refreshGuardModal(d) {{
   document.getElementById('gm-soc-req').textContent = req.toFixed(0) + '%';
   document.getElementById('gm-factor').innerHTML = factor.toFixed(2) + ' &times;';
   // sync both toggles
-  const bt = document.getElementById('guard-binary-toggle');
-  const gmt = document.getElementById('gm-binary-toggle');
-  if (bt.checked !== binary) bt.checked = binary;
-  if (gmt.checked !== binary) gmt.checked = binary;
-  document.getElementById('gm-mode').textContent = binary ? 'Full-or-Off' : 'Linear factor';
+  const bt = document.getElementById('guard-linear-toggle');
+  const gmt = document.getElementById('gm-linear-toggle');
+  if (bt.checked !== linear) bt.checked = linear;
+  if (gmt.checked !== linear) gmt.checked = linear;
+  document.getElementById('gm-mode').textContent = linear ? 'Linear factor' : 'Full-or-Off';
   const barPct = req > 0 ? Math.min(100, (cur / req) * 100) : 100;
   const fill = document.getElementById('gm-bar-fill');
   fill.style.width = barPct.toFixed(1) + '%';
@@ -1027,20 +1027,20 @@ function closeGuard() {{
   document.getElementById('guard-overlay').classList.remove('open');
 }}
 
-async function setGuardBinaryMode(enabled) {{
+async function setGuardLinearMode(enabled) {{
   // Keep both toggles in sync immediately (avoid flicker from the next poll)
-  document.getElementById('guard-binary-toggle').checked = enabled;
-  document.getElementById('gm-binary-toggle').checked = enabled;
+  document.getElementById('guard-linear-toggle').checked = enabled;
+  document.getElementById('gm-linear-toggle').checked = enabled;
   const r = await fetch('/api/guard', {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
-    body: JSON.stringify({{binary_mode: enabled}}),
+    body: JSON.stringify({{linear_mode: enabled}}),
   }});
   if (!r.ok) {{
     console.warn('Failed to update guard mode');
     // Revert on failure
-    document.getElementById('guard-binary-toggle').checked = !enabled;
-    document.getElementById('gm-binary-toggle').checked = !enabled;
+    document.getElementById('guard-linear-toggle').checked = !enabled;
+    document.getElementById('gm-linear-toggle').checked = !enabled;
   }}
   fetchStatus();
 }}

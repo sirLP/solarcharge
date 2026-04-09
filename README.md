@@ -2,7 +2,9 @@
 
 **Solar-only EV charging controller for SENEC home batteries and Alfen Eve wallboxes.**
 
-SolarCharge continuously reads your SENEC inverter/battery and adjusts the Alfen Eve charge current in real time so your EV charges *only* on solar surplus — no grid energy wasted. A built-in web UI gives you live power-flow monitoring, override controls, session history, and an optional battery guard that protects home-battery reserves as the day progresses.
+SolarCharge continuously reads your SENEC inverter/battery and adjusts the Alfen Eve charge current in real time so your EV charges *only* on solar surplus — no grid energy wasted. A built-in web UI gives you live power-flow monitoring, override controls, charging history, and an optional battery guard that protects home-battery reserves as the day progresses.
+
+> **Current version: v1.1.0** — see [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
 
 ---
 
@@ -11,9 +13,9 @@ SolarCharge continuously reads your SENEC inverter/battery and adjusts the Alfen
 | | |
 |---|---|
 | ☀️ **Solar-surplus tracking** | Adjusts charge current every poll cycle to match available solar surplus |
-| 🔋 **Battery Guard** | Dynamic SOC protection — required battery level rises toward sunset, with seasonal + weather-forecast adjustments |
-| 📊 **Live dashboard** | Power flow cards, charging status, override controls, battery guard panel |
-| 📋 **Session history** | Per-session kWh log with Reports page |
+| 🔋 **Battery Guard** | Dynamic SOC protection — required battery level rises toward sunset; Linear Factor or Full-or-Off surplus mode; seasonal + weather-forecast adjustments |
+| 📊 **Live dashboard** | Power flow cards, charging status with live session kWh, override controls, battery guard panel |
+| 📋 **Charging History** | Per-session kWh log; dedicated Charging History page |
 | 📈 **Charts** | Interactive time-series charts of solar, grid, battery and EV power |
 | 🔌 **Alfen Eve** | Supports both Modbus TCP and local HTTPS API (MyEve / HTTP mode) |
 | 🏠 **SENEC** | Reads solar, grid, battery and house power via the local SENEC API |
@@ -75,6 +77,7 @@ phases    = 3
 voltage_per_phase = 230
 max_current_a = 16
 min_current_a = 6
+release_current_a = 32    # current written on shutdown — returns wallbox to standalone
 
 [control]
 start_threshold_a = 6.0    # surplus (A) required to start a session
@@ -88,6 +91,7 @@ longitude                  = 12.10
 night_reserve_pct          = 30      # % SoC to hold from sunset through night
 daytime_reserve_pct        = 10      # minimum during peak solar hours
 hard_min_pct               = 5       # absolute floor — EV charging stops below this
+linear_mode                = true    # true = proportional factor; false = Full-or-Off
 ramp_hours_before_sunset   = 3.0
 use_seasonal               = true
 seasonal_winter_extra_pct  = 15
@@ -156,14 +160,13 @@ sudo ufw allow 8080/tcp
 | Section | Description |
 |---|---|
 | **Power Flow** | Live solar, grid, battery, house, and EV surplus in watts |
-| **Charging Status** | Car connection state, setpoint current, wallbox power |
-| **Battery Guard** | Required vs actual SoC, surplus factor, sun times, cloud cover |
+| **Charging Status** | Car connection state, setpoint current, wallbox power, live session kWh |
+| **Battery Guard** | Required vs actual SoC, Linear Factor toggle, sun times, cloud cover |
 | **Override** | Force a fixed current (0 A to stop) or resume auto mode |
 | **Control Settings** | Start/stop thresholds, ramp step, poll interval |
 | **🔍 Diagnostics** | Raw SENEC request/response and Alfen register reads |
-| **📋 History** | Per-session log: date, start/end SoC, kWh delivered |
 | **📈 Chart** | Time-series chart of all power channels |
-| **⚡ Reports** | Alfen transaction log with kWh totals |
+| **⚡ Charging History** | Per-session log with kWh totals, duration, solar fraction |
 
 ---
 
@@ -176,9 +179,11 @@ The Battery Guard dynamically limits EV charging surplus when the home battery S
 - Heavy cloud cover (via [Open-Meteo](https://open-meteo.com/) free API) advances the effective sunset.
 - A seasonal cosine correction raises requirements in winter (peaks ~January).
 - Historic solar data from the local database can relax the guard when plenty of solar is still expected.
-- The **surplus factor** scales linearly from 0× at `hard_min_pct` to 1× once the required SoC is met.
+- A **Linear Factor / Full-or-Off** toggle controls how surplus is applied when the battery is below target:
+  - **Linear Factor ON** (default) — surplus scales from 0× at `hard_min_pct` to 1× once the required SoC is met.
+  - **Linear Factor OFF** — Full-or-Off mode: the EV receives the full surplus when the battery is sufficiently charged, or nothing at all when protection is needed.
 
-Click **Details →** on the Battery Guard card to open the detail modal.
+Click **Details →** on the Battery Guard card to open the detail modal. The toggle value is persisted to `config.toml`.
 
 ---
 

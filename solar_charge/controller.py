@@ -115,7 +115,7 @@ class Controller:
         self._app_state = app_state
         self._history = history
         self._timeseries = timeseries
-        self._was_charging = False   # track previous cycle for session transitions
+        self._prev_wallbox_charging: bool = False  # wallbox ChargeStatus.CHARGING last cycle
         self._calc_only = not bool(config.alfen_host)
 
         self._senec = SenecClient(
@@ -216,14 +216,6 @@ class Controller:
     #  Internal helpers                                                    #
     # ------------------------------------------------------------------ #
 
-    async def _poll_cycle(self) -> None:
-        """Run one poll cycle, then update session history for any state transition."""
-        was_charging = self._internal.charging_active
-        try:
-            await self._do_poll_cycle()
-        finally:
-            await self._update_session(was_charging, self._internal.charging_active)
-
     async def _update_session(self, was_charging: bool, is_charging: bool) -> None:
         """Detect charging start/stop transitions and maintain session history."""
         h = self._history
@@ -269,8 +261,6 @@ class Controller:
             solar_w = senec.solar_power_w if senec else 0.0
             h.sample(power_w, solar_w, self._cfg.poll_interval_s)
 
-        self._was_charging = is_charging
-
     async def _write_alfen(self, amps: float) -> None:
         """Write current setpoint to Alfen (no-op in calc-only mode)."""
         if self._alfen and not self._calc_only:
@@ -302,11 +292,19 @@ class Controller:
 
     async def _poll_cycle(self) -> None:
         """Wrap _do_poll_cycle with session-history tracking."""
-        was_charging = self._internal.charging_active
+        prev_wb_charging = self._prev_wallbox_charging
         try:
             await self._do_poll_cycle()
         finally:
-            await self._update_session(was_charging, self._internal.charging_active)
+            # Derive session open/close from the wallbox's own ChargeStatus so
+            # state is always consistent with hardware, even after a restart.
+            # Fall back to internal flag in calc-only mode (no wallbox present).
+            alfen = self._app_state.alfen_state
+            cur_wb_charging = (
+                alfen is not None and alfen.status == ChargeStatus.CHARGING
+            ) if not self._calc_only else self._internal.charging_active
+            await self._update_session(prev_wb_charging, cur_wb_charging)
+            self._prev_wallbox_charging = cur_wb_charging
             # Record timeseries sample from app_state (works regardless of which
             # branch _do_poll_cycle took, including all early-return paths).
             if self._timeseries is not None:

@@ -431,19 +431,6 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
   #config-msg {{ font-size: .8rem; margin-top: .5rem; }}
   .msg-ok  {{ color: var(--green); }}
   .msg-err {{ color: var(--red); }}
-  /* ── History modal ───────────────────────────────────────────── */
-  .hist-table {{ width:100%; border-collapse:collapse; font-size:.8rem; }}
-  .hist-table thead tr {{ background:#f7fafc; }}
-  .hist-table th {{ padding:.4rem .6rem; text-align:left; border-bottom:2px solid var(--border);
-    font-size:.7rem; font-weight:700; color:var(--muted); white-space:nowrap; }}
-  .hist-table td {{ padding:.4rem .6rem; border-bottom:1px solid var(--border); vertical-align:top; }}
-  .hist-table tr:last-child td {{ border-bottom:none; }}
-  .hist-table tr:hover td {{ background:#f0f4f8; }}
-  .hist-active {{ background:#ebf8ff; border:1px solid #bee3f8;
-    border-radius:.4rem; padding:.5rem .75rem; font-size:.8rem; margin-bottom:.75rem;
-    display:flex; align-items:center; gap:.5rem; }}
-  .hist-active strong {{ color:#2b6cb0; }}
-  .rfid-tag {{ font-family:monospace; font-size:.75rem; color:#553c9a; }}
   /* ── Chart modal ───────────────────────────────────────────── */
   .chart-controls {{ display:flex; flex-wrap:wrap; gap:.75rem; align-items:flex-start;
     padding:.75rem 1.2rem; border-bottom:1px solid var(--border); background:#f7fafc; }}
@@ -529,9 +516,8 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
   <h1>&#9728;&#65039; SolarCharge</h1>
   <span id="mode-badge">—</span>
   <button class="btn btn-ghost" style="margin-left:auto;font-size:.8rem;padding:.3rem .75rem" onclick="openDiag()">&#128270; Diagnostics</button>
-  <button class="btn btn-ghost" style="font-size:.8rem;padding:.3rem .75rem" onclick="openHistory()">&#128203; History</button>
   <button class="btn btn-ghost" style="font-size:.8rem;padding:.3rem .75rem" onclick="openChart()">&#128200; Chart</button>
-  <a href="/reports" class="btn btn-ghost" style="font-size:.8rem;padding:.3rem .75rem;color:#000;text-decoration:none">&#9889; Reports</a>
+  <a href="/reports" class="btn btn-ghost" style="font-size:.8rem;padding:.3rem .75rem;color:#000;text-decoration:none">&#9889; Charging History</a>
   <span id="last-updated" style="font-size:.75rem;color:#a0aec0">—</span>
 </header>
 <main>
@@ -810,44 +796,6 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
   </div>
 </div>
 
-<!-- ── History modal ───────────────────────────────────────── -->
-<div class="modal-overlay" id="hist-overlay" onclick="if(event.target===this)closeHistory()">
-  <div class="modal" style="width:min(96vw,1100px)">
-    <div class="modal-header">
-      <h2>&#128203; Charging History</h2>
-      <span id="hist-count" style="font-size:.8rem;color:var(--muted);margin-left:.5rem"></span>
-      <button class="modal-close" style="margin-left:auto" onclick="closeHistory()">&#x2715;</button>
-    </div>
-    <div class="modal-body">
-      <div id="hist-active-banner" style="display:none" class="hist-active">
-        &#9889; <strong>Session in progress</strong>
-        <span id="hist-active-since"></span>
-        &mdash; RFID: <span id="hist-active-rfid" class="rfid-tag">—</span>
-      </div>
-      <div id="hist-empty" style="display:none;color:var(--muted);padding:2rem;text-align:center">
-        No completed sessions yet.
-      </div>
-      <div style="overflow:auto">
-        <table class="hist-table" id="hist-table">
-          <thead>
-            <tr>
-              <th>Started</th>
-              <th>Duration</th>
-              <th>Energy (kWh)</th>
-              <th>Avg W</th>
-              <th>Peak W</th>
-              <th>Solar kWh</th>
-              <th>Solar %</th>
-              <th>RFID</th>
-            </tr>
-          </thead>
-          <tbody id="hist-body"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- ── Chart modal ───────────────────────────────────────── -->
 <div class="modal-overlay" id="chart-overlay" onclick="if(event.target===this)closeChart()">
   <div class="modal" style="width:min(98vw,1200px);height:min(90vh,700px);display:flex;flex-direction:column">
@@ -1096,75 +1044,6 @@ async function doOverride(action) {{
 fetchConfig();
 fetchStatus();
 setInterval(fetchStatus, REFRESH_MS);
-
-// ── History modal ────────────────────────────────────────────────
-function _fmtDuration(s) {{
-  s = Math.round(s);
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
-  if (h) return h + 'h ' + String(m).padStart(2,'0') + 'm';
-  if (m) return m + 'm ' + String(ss).padStart(2,'0') + 's';
-  return ss + 's';
-}}
-
-function _fmtDt(iso) {{
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {{month:'short', day:'numeric'}}) + ' ' +
-         d.toLocaleTimeString(undefined, {{hour:'2-digit', minute:'2-digit'}});
-}}
-
-async function openHistory() {{
-  document.getElementById('hist-overlay').classList.add('open');
-  await refreshHistory();
-}}
-
-function closeHistory() {{
-  document.getElementById('hist-overlay').classList.remove('open');
-}}
-
-async function refreshHistory() {{
-  let d;
-  try {{
-    const r = await fetch('/api/history');
-    d = await r.json();
-  }} catch(e) {{ console.error('History fetch failed', e); return; }}
-
-  document.getElementById('hist-count').textContent =
-    d.total ? d.total + ' session' + (d.total !== 1 ? 's' : '') : '';
-
-  // Active session banner
-  const banner = document.getElementById('hist-active-banner');
-  if (d.active) {{
-    banner.style.display = '';
-    document.getElementById('hist-active-since').textContent =
-      'started ' + _fmtDt(d.active.started_at);
-    document.getElementById('hist-active-rfid').textContent =
-      d.active.rfid_tag || '(none)';
-  }} else {{
-    banner.style.display = 'none';
-  }}
-
-  // Completed sessions table
-  const sessions = d.sessions || [];
-  document.getElementById('hist-empty').style.display = sessions.length ? 'none' : '';
-  document.getElementById('hist-table').style.display  = sessions.length ? '' : 'none';
-
-  const tb = document.getElementById('hist-body');
-  tb.innerHTML = sessions.map(s => {{
-    const solar = s.solar_fraction_pct;
-    const solarColor = solar >= 90 ? '#276749' : solar >= 60 ? '#2b6cb0' : '#744210';
-    return `<tr>
-      <td>${{_fmtDt(s.started_at)}}</td>
-      <td>${{_fmtDuration(s.duration_s)}}</td>
-      <td><strong>${{s.energy_kwh.toFixed(2)}}</strong></td>
-      <td>${{s.avg_power_w ? Math.round(s.avg_power_w) : '—'}}</td>
-      <td>${{s.peak_power_w ? Math.round(s.peak_power_w) : '—'}}</td>
-      <td>${{s.solar_kwh ? s.solar_kwh.toFixed(2) : '—'}}</td>
-      <td style="color:${{solarColor}};font-weight:700">${{solar.toFixed(0)}}%</td>
-      <td class="rfid-tag">${{s.rfid_tag || '<span style="color:var(--muted)">—</span>'}}</td>
-    </tr>`;
-  }}).join('');
-}}
 
 // ── Chart modal ────────────────────────────────────────────────
 // Colours cycling through a palette
@@ -1448,7 +1327,7 @@ def _build_reports_html() -> str:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Charging Reports \u2013 SolarCharge</title>
+<title>Charging History \u2013 SolarCharge</title>
 <style>
   :root {
     --bg:#f0f4f8; --card:#fff; --border:#dde3ea;
@@ -1527,7 +1406,7 @@ def _build_reports_html() -> str:
 <body>
 <header>
   <a href="/" class="back-btn">&#8592; Dashboard</a>
-  <h1>&#9889; Charging Reports</h1>
+  <h1>&#9889; Charging History</h1>
   <span id="last-fetch" style="margin-left:auto;font-size:.75rem;color:#a0aec0"></span>
   <button class="btn btn-ghost" onclick="fetchSessions()"
     style="margin-left:.5rem;font-size:.8rem;padding:.3rem .75rem">&#8635; Refresh</button>

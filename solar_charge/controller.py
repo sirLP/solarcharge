@@ -383,7 +383,9 @@ class Controller:
                     log.info("Car disconnected -- setting current to 0 A")
                     internal.current_setpoint_a = 0.0
                     internal.charging_active = False
-                    await self._write_alfen(0.0)
+                # Always write 0 A every cycle so the Alfen watchdog never
+                # times out and shows "waiting for load management".
+                await self._write_alfen(0.0)
                 # Still compute and display the potential surplus even when no
                 # car is connected, so the UI shows what *could* be charged.
                 potential_surplus_w = senec.solar_power_w - senec.house_power_w

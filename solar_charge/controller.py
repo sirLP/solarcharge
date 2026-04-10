@@ -454,12 +454,31 @@ class Controller:
             new_setpoint = clamped
             active = clamped > 0
 
+            # Also read Alfen so the UI shows live wallbox state / session kWh
+            alfen_snap: AlfenState | None = None
+            if self._alfen and not self._calc_only:
+                try:
+                    alfen_snap = await asyncio.get_event_loop().run_in_executor(
+                        None, self._alfen.read_state
+                    )
+                    self._snapshot_diagnostics(alfen_reads_updated=True)
+                except Exception as exc:  # noqa: BLE001
+                    log.debug("Alfen read failed during override: %s", exc)
+
+            # Track session start so session_kwh is accurate during override
+            if active and not internal.charging_active and alfen_snap is not None:
+                internal.session_start_wh = alfen_snap.meter_wh
+                log.debug("[OVERRIDE] Session started — meter at %.1f Wh", alfen_snap.meter_wh)
+
             internal.current_setpoint_a = new_setpoint
             internal.charging_active = active
             async with app.lock:
                 app.senec_state = senec
+                app.alfen_state = alfen_snap if alfen_snap is not None else app.alfen_state
                 app.setpoint_a = new_setpoint
                 app.charging_active = active
+                if alfen_snap is not None and internal.session_start_wh > 0:
+                    app.session_kwh = max(0.0, (alfen_snap.meter_wh - internal.session_start_wh) / 1000.0)
                 app.last_updated = datetime.now()
             return
 

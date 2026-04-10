@@ -648,7 +648,9 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
     <div class="status-row">
       <span class="status-badge badge-no-vehicle" id="car-badge">No vehicle</span>
       <div class="stat">
-        <span class="s-label">Setpoint <span class="tip" data-tip="Charge current (A) currently commanded to the wallbox by the solar controller.">i</span></span>
+        <span class="s-label">Setpoint <span class="tip" data-tip="Charge current (A) currently commanded to the wallbox by the solar controller.">i</span>
+          <span id="setpoint-override-pill" class="status-badge badge-override" style="display:none;font-size:.62rem;padding:.1rem .45rem;margin-left:.3rem;vertical-align:middle">Override</span>
+        </span>
         <span class="s-value" id="setpoint-a">— A (— kW)</span>
       </div>
       <div class="stat">
@@ -991,13 +993,16 @@ function applyStatus(d) {{
 
   const badge = document.getElementById('car-badge');
   let bc = 'badge-no-vehicle', bt = d.car_status;
-  if (d.override_active) {{ bc = 'badge-override'; bt = 'Override'; }}
-  else if (d.car_status === 'charging') {{ bc = 'badge-charging'; bt = 'Charging'; }}
+  if (d.car_status === 'charging') {{ bc = 'badge-charging'; bt = 'Charging'; }}
   else if (d.car_status === 'connected') {{ bc = 'badge-connected'; bt = 'Connected'; }}
   else if (d.car_status === 'fault') {{ bc = 'badge-fault'; bt = 'Fault'; }}
   else if (d.calc_only && d.charging_active) {{ bc = 'badge-charging'; bt = 'Would charge'; }}
   badge.className = 'status-badge ' + bc;
   badge.textContent = bt;
+
+  // Override indicator on the Setpoint label
+  const ovPill = document.getElementById('setpoint-override-pill');
+  ovPill.style.display = d.override_active ? '' : 'none';
 
   // Override status line
   const ovs = document.getElementById('override-status');

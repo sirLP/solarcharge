@@ -1,3 +1,112 @@
+# SolarCharge v1.2.1 — Release Notes
+
+**Release date:** 2026-04-10
+
+---
+
+## New Features
+
+### Battery Guard — tomorrow weather forecast raises night reserve
+When tomorrow's forecast is overcast or rainy, the guard now boosts
+tonight's `night_reserve` so the battery enters the next solar-poor day as
+full as possible.
+
+- Calls the Open-Meteo free API for **two** days (today + tomorrow) in a
+  single request — no extra API cost.
+- The boost scales linearly from zero at `tomorrow_overcast_threshold` (default
+  70 %) to a configurable maximum at 100 % cloud cover.
+- Example: `night_reserve = 30 %`, tomorrow forecast = 85 % clouds,
+  threshold = 70 %, max = 95 % → boost = +32.5 % → effective night reserve
+  **62.5 %** tonight.
+- Tomorrow cloud cover and the active boost are shown in the Battery Guard
+  detail modal and in the inline summary (🌧️ badge when active).
+
+New config keys (all optional — safe defaults mean no config change needed):
+
+```toml
+[battery_guard]
+use_tomorrow_forecast          = true   # default: true
+tomorrow_overcast_threshold    = 70     # cloud-cover % that counts as "rainy tomorrow"
+tomorrow_night_reserve_max_pct = 95     # target night reserve when tomorrow is 100% overcast
+```
+
+---
+
+## Bug Fixes
+
+### Charging Status card showed stale data during override
+While an operator override was active, the controller skipped the Alfen read
+entirely. `app.alfen_state` (wallbox power, car status, session kWh) was
+frozen from the last auto-mode cycle, so the UI showed 0 W, a stale wallbox
+state, and a session energy count that never advanced.
+The override path now reads Alfen every cycle, keeps session kWh ticking, and
+initialises `session_start_wh` when charging begins under override.
+
+### "Override" badge hid actual wallbox state
+The car-status badge was set to "Override" while an override was active,
+hiding whether the car was actually charging or just connected.
+The badge now always shows the real wallbox state (`Charging` / `Connected` /
+`No vehicle` / `Fault`). An "Override" pill is shown inline next to the
+Setpoint label instead.
+
+### RFID guard did not block cards before solar charging started
+The RFID guard only fired when the wallbox reported `ChargeStatus.CHARGING`.
+While a car was present but SolarCharge was holding 0 A (no solar surplus),
+the status was `CONNECTED` — so unknown cards were not blocked until charging
+actually started. The guard now fires whenever a car is present regardless of
+charge state, and stops flooding the blocked-attempts log with `uid=<none>`
+entries while waiting for the Alfen transaction log to be written.
+
+### Historic solar relaxation: spurious "relaxed by 0.0%" message
+The relaxation block was entered even when `deficit = 0` (battery already met
+the required SOC), appending a meaningless annotation to every reason string.
+A `deficit > 0` guard now prevents this.
+
+### Historic solar relaxation: double-division bug
+`relaxation` was computed as `min(deficit * 0.5, potential_soc_gain / wh_per_pct)`.
+`potential_soc_gain` is already in `%SOC` units (`remaining_solar_wh / wh_per_pct`),
+so the second `/ wh_per_pct` divided the cap by 150× for no reason.
+The formula is now `min(deficit * 0.5, potential_soc_gain)`.
+
+---
+
+## Improvements
+
+### Tooltip bubbles no longer clipped in Charging History and guard modal
+The `.table-wrap` container on the Charging History page and the `.modal-body`
+on the dashboard both use `overflow: hidden` / `overflow: auto` for styling.
+These clipped the upward-opening tooltip bubbles. Both now flip to
+open downward via targeted CSS overrides.
+
+### Tooltips added to all rows in the Battery Guard details modal
+Every row in the "Guard values" table (Mode, Surplus factor, Sunrise, Effective
+sunset, Cloud cover, Tomorrow cloud cover, Tomorrow night reserve boost,
+Seasonal correction) and the Current / Required SoC bar labels now have
+descriptive `i` tooltips.
+
+---
+
+## Configuration Changes
+
+| Key | Section | Default | Notes |
+|---|---|---|---|
+| `use_tomorrow_forecast` | `[battery_guard]` | `true` | New — enable/disable tomorrow weather boost |
+| `tomorrow_overcast_threshold` | `[battery_guard]` | `70` | New — cloud-cover % that triggers a boost |
+| `tomorrow_night_reserve_max_pct` | `[battery_guard]` | `95` | New — maximum night reserve when tomorrow is fully overcast |
+
+No other config keys changed.
+
+---
+
+## Upgrade Notes
+
+1. **No breaking changes** — existing `config.toml` files are fully compatible.
+2. The tomorrow forecast boost is **enabled by default** with conservative
+   defaults (70 % threshold, 95 % max). Add the three new keys to
+   `[battery_guard]` only if you want to tune the thresholds.
+
+---
+
 # SolarCharge v1.2.0 — Release Notes
 
 **Release date:** 2026-04-09

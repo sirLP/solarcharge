@@ -4,7 +4,7 @@
 
 SolarCharge continuously reads your SENEC inverter/battery and adjusts the Alfen Eve charge current in real time so your EV charges *only* on solar surplus — no grid energy wasted. A built-in web UI gives you live power-flow monitoring, override controls, charging history, and an optional battery guard that protects home-battery reserves as the day progresses.
 
-> **Current version: v1.2.0** — see [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
+> **Current version: v1.2.1** — see [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
 
 ---
 
@@ -110,6 +110,9 @@ seasonal_winter_extra_pct  = 15
 use_weather_forecast       = true    # Open-Meteo free API, no key required
 weather_overcast_threshold = 70
 weather_max_sunset_advance_h = 2.0
+use_tomorrow_forecast          = true    # boost night reserve when tomorrow is rainy
+tomorrow_overcast_threshold    = 70      # cloud-cover % that triggers a boost
+tomorrow_night_reserve_max_pct = 95      # max night reserve when tomorrow is fully overcast
 use_historic_solar         = true
 historic_months_lookback   = 3
 ```
@@ -190,6 +193,7 @@ The Battery Guard dynamically limits EV charging surplus when the home battery S
 - **Daytime reserve** (e.g. 10 %) applies during peak solar hours.
 - Starting `ramp_hours_before_sunset` before dusk, the target ramps linearly up to the **night reserve** (e.g. 30 %).
 - Heavy cloud cover (via [Open-Meteo](https://open-meteo.com/) free API) advances the effective sunset.
+- **Tomorrow forecast**: if tomorrow is predicted to be overcast or rainy, tonight's night reserve is boosted proportionally (up to `tomorrow_night_reserve_max_pct`) so the battery enters a solar-poor day as full as possible.
 - A seasonal cosine correction raises requirements in winter (peaks ~January).
 - Historic solar data from the local database can relax the guard when plenty of solar is still expected.
 - A **Linear Factor / Full-or-Off** toggle controls how surplus is applied when the battery is below target:

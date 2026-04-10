@@ -58,7 +58,7 @@ class StatusBadge extends StatelessWidget {
                     color: CupertinoColors.systemOrange, width: 1),
               ),
               child: const Text(
-                'OVERRIDE',
+                'OVERWRITE',
                 style: TextStyle(
                   color: CupertinoColors.systemOrange,
                   fontSize: 10,
@@ -89,7 +89,7 @@ class StatusBadge extends StatelessWidget {
       case 'disconnected':
       default:
         return (
-          'No Car',
+          'No Vehicle',
           CupertinoColors.systemGrey,
           CupertinoIcons.bolt_slash,
         );
@@ -103,9 +103,8 @@ class StatusBadge extends StatelessWidget {
       return '$kw kW  ·  $a A  ·  ${status.sessionKwh.toStringAsFixed(2)} kWh session';
     }
     if (status.carStatus.toLowerCase() == 'connected') {
-      return 'Waiting for sufficient solar surplus';
+      return 'Waiting for enough solar surplus';
     }
-    final soc = status.batterySocPct.toStringAsFixed(1);
-    return 'Battery $soc %  ·  ${status.carStatus}';
+    return status.carStatus;
   }
 }

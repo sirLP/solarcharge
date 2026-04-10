@@ -13,6 +13,8 @@ import '../models/config.dart';
 import '../models/status.dart';
 import '../services/api_service.dart';
 
+const _hardcodedBaseUrl = 'http://192.168.178.59:8080';
+
 // ── settings ─────────────────────────────────────────────────────────────────
 
 /// Provider for [SharedPreferences]; must be overridden in main() after await.
@@ -28,22 +30,25 @@ final baseUrlProvider = StateNotifierProvider<BaseUrlNotifier, String>((ref) {
 
 class BaseUrlNotifier extends StateNotifier<String> {
   BaseUrlNotifier(this._prefs)
-      : super(_prefs.getString(_key) ?? 'http://solarcharge.local');
+      : super(_hardcodedBaseUrl) {
+    // Keep prefs in sync so any UI that displays the configured URL shows the fixed value.
+    _prefs.setString(_key, _hardcodedBaseUrl);
+  }
 
   static const _key = 'base_url';
   final SharedPreferences _prefs;
 
   Future<void> update(String url) async {
-    state = url;
-    await _prefs.setString(_key, url);
+    state = _hardcodedBaseUrl;
+    await _prefs.setString(_key, _hardcodedBaseUrl);
   }
 }
 
 // ── API service ───────────────────────────────────────────────────────────────
 
 final apiServiceProvider = Provider<ApiService>((ref) {
-  final baseUrl = ref.watch(baseUrlProvider);
-  return ApiService(baseUrl: baseUrl);
+  ref.watch(baseUrlProvider);
+  return ApiService(baseUrl: _hardcodedBaseUrl);
 });
 
 // ── status ────────────────────────────────────────────────────────────────────
@@ -57,7 +62,6 @@ const _pollInterval = Duration(seconds: 10);
 class StatusNotifier extends AsyncNotifier<ChargeStatus> {
   @override
   Future<ChargeStatus> build() async {
-    // Schedule the next poll and cancel it if the notifier is disposed.
     final timer = Timer(_pollInterval, ref.invalidateSelf);
     ref.onDispose(timer.cancel);
     return ref.watch(apiServiceProvider).fetchStatus();

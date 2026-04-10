@@ -2,8 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'screens/dashboard_screen.dart';
-import 'screens/history_screen.dart';
-import 'screens/settings_screen.dart';
+import 'screens/details_screen.dart';
 
 class SolarChargeApp extends StatelessWidget {
   const SolarChargeApp({super.key});
@@ -34,12 +33,8 @@ class _AppTabs extends ConsumerWidget {
             label: 'Dashboard',
           ),
           BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.chart_bar_alt_fill),
-            label: 'History',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.settings),
-            label: 'Settings',
+            icon: Icon(CupertinoIcons.doc_text_search),
+            label: 'Details',
           ),
         ],
       ),
@@ -48,11 +43,8 @@ class _AppTabs extends ConsumerWidget {
           0 => CupertinoTabView(
               builder: (_) => const DashboardScreen(),
             ),
-          1 => CupertinoTabView(
-              builder: (_) => const HistoryScreen(),
-            ),
           _ => CupertinoTabView(
-              builder: (_) => const SettingsScreen(),
+              builder: (_) => const DetailsScreen(),
             ),
         };
       },

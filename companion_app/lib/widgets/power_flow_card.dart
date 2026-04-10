@@ -51,6 +51,7 @@ class PowerFlowCard extends StatelessWidget {
             label: 'Battery',
             valueW: status.batteryW,
             invertSign: true, // positive = charging in backend convention
+            suffix: '  ·  ${status.batterySocPct.toStringAsFixed(1)} % SoC',
           ),
           _PowerRow(
             icon: CupertinoIcons.antenna_radiowaves_left_right,

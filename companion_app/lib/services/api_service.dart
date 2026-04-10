@@ -95,6 +95,30 @@ class ApiService {
     _decode(resp);
   }
 
+  // ── diagnostics ──────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> fetchDiagnostics() async {
+    final resp = await http.get(_uri('/api/diagnostics'));
+    return _decode(resp);
+  }
+
+  // ── RFID guard ───────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> fetchRfidConfig() async {
+    final resp = await http.get(_uri('/api/rfid'));
+    return _decode(resp);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchRfidBlocked() async {
+    final resp = await http.get(_uri('/api/rfid/blocked'));
+    final body = _decode(resp);
+    final blocked = body['blocked'];
+    if (blocked is List) {
+      return blocked.cast<Map<String, dynamic>>();
+    }
+    return const [];
+  }
+
   // ── history ──────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> fetchHistory({int days = 7}) async {

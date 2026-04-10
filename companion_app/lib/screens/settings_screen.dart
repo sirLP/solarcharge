@@ -113,7 +113,7 @@ class _AboutSection extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Monitor and control your SolarCharge EV wallbox.',
+              'Monitor and control your home EV charging solution.',
               style: TextStyle(
                 color: CupertinoColors.systemGrey,
                 fontSize: 13,

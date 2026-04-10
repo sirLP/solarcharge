@@ -13,8 +13,6 @@ import '../models/config.dart';
 import '../models/status.dart';
 import '../services/api_service.dart';
 
-const _hardcodedBaseUrl = 'http://192.168.178.59:8080';
-
 // ── settings ─────────────────────────────────────────────────────────────────
 
 /// Provider for [SharedPreferences]; must be overridden in main() after await.
@@ -30,25 +28,22 @@ final baseUrlProvider = StateNotifierProvider<BaseUrlNotifier, String>((ref) {
 
 class BaseUrlNotifier extends StateNotifier<String> {
   BaseUrlNotifier(this._prefs)
-      : super(_hardcodedBaseUrl) {
-    // Keep prefs in sync so any UI that displays the configured URL shows the fixed value.
-    _prefs.setString(_key, _hardcodedBaseUrl);
-  }
+      : super(_prefs.getString(_key) ?? '');
 
   static const _key = 'base_url';
   final SharedPreferences _prefs;
 
   Future<void> update(String url) async {
-    state = _hardcodedBaseUrl;
-    await _prefs.setString(_key, _hardcodedBaseUrl);
+    state = url;
+    await _prefs.setString(_key, url);
   }
 }
 
 // ── API service ───────────────────────────────────────────────────────────────
 
 final apiServiceProvider = Provider<ApiService>((ref) {
-  ref.watch(baseUrlProvider);
-  return ApiService(baseUrl: _hardcodedBaseUrl);
+  final baseUrl = ref.watch(baseUrlProvider);
+  return ApiService(baseUrl: baseUrl);
 });
 
 // ── status ────────────────────────────────────────────────────────────────────

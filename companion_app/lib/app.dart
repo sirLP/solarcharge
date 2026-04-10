@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/details_screen.dart';
-import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 
 class SolarChargeApp extends StatelessWidget {
@@ -35,7 +34,6 @@ class _AppTabsState extends State<_AppTabs> {
   static const _pages = [
     DashboardScreen(),
     DetailsScreen(),
-    HistoryScreen(),
     SettingsScreen(),
   ];
 
@@ -84,10 +82,6 @@ class _AppTabsState extends State<_AppTabs> {
               BottomNavigationBarItem(
                 icon: Icon(CupertinoIcons.doc_text_search),
                 label: 'Details',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.clock),
-                label: 'History',
               ),
               BottomNavigationBarItem(
                 icon: Icon(CupertinoIcons.settings),

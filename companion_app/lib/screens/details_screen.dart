@@ -15,20 +15,11 @@ class DetailsScreen extends ConsumerStatefulWidget {
 
 class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   late Future<_DetailsData> _future;
-  late final TextEditingController _urlController;
-  bool _urlSaved = false;
 
   @override
   void initState() {
     super.initState();
-    _urlController = TextEditingController(text: ref.read(baseUrlProvider));
     _future = _load();
-  }
-
-  @override
-  void dispose() {
-    _urlController.dispose();
-    super.dispose();
   }
 
   Future<_DetailsData> _load() async {
@@ -48,22 +39,6 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   Future<void> _refresh() async {
     setState(() {
       _future = _load();
-    });
-  }
-
-  Future<void> _saveServerUrl() async {
-    final url = _urlController.text.trim();
-    if (url.isEmpty) return;
-    await ref.read(baseUrlProvider.notifier).update(url);
-    // Force status poll to switch to the new backend immediately.
-    ref.read(statusProvider.notifier).refresh();
-    setState(() {
-      _urlSaved = true;
-      _future = _load();
-    });
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      setState(() => _urlSaved = false);
     });
   }
 
@@ -100,36 +75,6 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _Card(
-                  title: 'Server',
-                  children: [
-                    const Text(
-                      'SolarCharge server URL',
-                      style: TextStyle(
-                        color: CupertinoColors.systemGrey,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    CupertinoTextField(
-                      controller: _urlController,
-                      keyboardType: TextInputType.url,
-                      autocorrect: false,
-                      placeholder: 'http://solarcharge.local',
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: CupertinoColors.systemBackground,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    CupertinoButton.filled(
-                      onPressed: _saveServerUrl,
-                      child: Text(_urlSaved ? 'Saved' : 'Save URL'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
                 _Card(
                   title: 'Diagnostics',
                   children: [

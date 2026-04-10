@@ -460,10 +460,10 @@ class BatteryGuard:
             # We use a conservative capacity assumption of 150 Wh per % SOC
             # (representative of a 15 kWh battery).
             wh_per_pct = 150.0
-            potential_soc_gain = remaining_solar_wh / wh_per_pct
+            potential_soc_gain = remaining_solar_wh / wh_per_pct  # in % SOC units
             deficit = max(0.0, required_soc - battery_soc_pct)
-            if potential_soc_gain > deficit * 1.2:  # 20% margin
-                relaxation = min(deficit * 0.5, potential_soc_gain / wh_per_pct)
+            if deficit > 0 and potential_soc_gain > deficit * 1.2:  # 20% margin, only when behind
+                relaxation = min(deficit * 0.5, potential_soc_gain)
                 required_soc = max(daytime_reserve, required_soc - relaxation)
                 reason += f" (relaxed by {relaxation:.1f}% — expected solar {remaining_solar_wh:.0f} Wh)"
 

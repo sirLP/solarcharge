@@ -1,8 +1,9 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/details_screen.dart';
+import 'screens/history_screen.dart';
+import 'screens/settings_screen.dart';
 
 class SolarChargeApp extends StatelessWidget {
   const SolarChargeApp({super.key});
@@ -20,34 +21,82 @@ class SolarChargeApp extends StatelessWidget {
   }
 }
 
-class _AppTabs extends ConsumerWidget {
+class _AppTabs extends StatefulWidget {
   const _AppTabs();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return CupertinoTabScaffold(
-      tabBar: CupertinoTabBar(
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.bolt_fill),
-            label: 'Dashboard',
+  State<_AppTabs> createState() => _AppTabsState();
+}
+
+class _AppTabsState extends State<_AppTabs> {
+  int _currentIndex = 0;
+  late final PageController _pageController;
+
+  static const _pages = [
+    DashboardScreen(),
+    DetailsScreen(),
+    HistoryScreen(),
+    SettingsScreen(),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onTabTapped(int index) {
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPageScaffold(
+      child: Column(
+        children: [
+          Expanded(
+            child: PageView(
+              controller: _pageController,
+              onPageChanged: (index) {
+                setState(() => _currentIndex = index);
+              },
+              children: _pages,
+            ),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.doc_text_search),
-            label: 'Details',
+          CupertinoTabBar(
+            currentIndex: _currentIndex,
+            onTap: _onTabTapped,
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.bolt_fill),
+                label: 'Dashboard',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.doc_text_search),
+                label: 'Details',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.clock),
+                label: 'History',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.settings),
+                label: 'Settings',
+              ),
+            ],
           ),
         ],
       ),
-      tabBuilder: (context, index) {
-        return switch (index) {
-          0 => CupertinoTabView(
-              builder: (_) => const DashboardScreen(),
-            ),
-          _ => CupertinoTabView(
-              builder: (_) => const DetailsScreen(),
-            ),
-        };
-      },
     );
   }
 }

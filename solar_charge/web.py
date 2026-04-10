@@ -66,6 +66,8 @@ class StatusResponse(BaseModel):
     guard_sunrise: str
     guard_reason: str
     guard_cloud_pct: float | None
+    guard_tomorrow_cloud_pct: float | None
+    guard_tomorrow_boost: float
     guard_seasonal_extra: float
 
 
@@ -180,6 +182,8 @@ def create_app(
             guard_sunrise=gs.sunrise_local if gs else "",
             guard_reason=gs.reason if gs else "",
             guard_cloud_pct=gs.weather_cloud_pct if gs else None,
+            guard_tomorrow_cloud_pct=gs.tomorrow_cloud_pct if gs else None,
+            guard_tomorrow_boost=gs.tomorrow_night_reserve_boost if gs else 0.0,
             guard_seasonal_extra=gs.seasonal_extra_pct if gs else 0.0,
         )
 
@@ -868,6 +872,8 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
             <tr><td>Sunrise</td><td id="gm-sunrise">—</td><td></td></tr>
             <tr><td>Effective sunset</td><td id="gm-sunset">—</td><td></td></tr>
             <tr><td>Cloud cover</td><td id="gm-cloud">—</td><td></td></tr>
+            <tr><td>Tomorrow cloud cover</td><td id="gm-tomorrow-cloud">—</td><td></td></tr>
+            <tr><td>Tomorrow night reserve boost</td><td id="gm-tomorrow-boost">—</td><td></td></tr>
             <tr><td>Seasonal correction</td><td id="gm-seasonal">—</td><td></td></tr>
           </tbody>
         </table>
@@ -885,7 +891,9 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
           configurable number of hours before (effective) sunset, the required SoC ramps
           linearly up to the <em>night reserve</em> target. Heavy cloud cover advances the
           effective sunset. A winter seasonal correction raises both targets in the darker
-          months.<br><br>
+          months. When tomorrow&#39;s forecast is overcast or rainy, the night reserve is
+          boosted proportionally (up to a configurable maximum) so the battery enters
+          the next day as full as possible.<br><br>
           The <strong>Linear Factor</strong> toggle controls how surplus is applied when
           the battery SoC is below the required target.<br>
           <strong>On</strong> &mdash; surplus scales gradually from 0&times; at the hard
@@ -1034,6 +1042,7 @@ function applyStatus(d) {{
     // sun times + cloud
     let sunText = '\U0001F305 ' + (d.guard_sunrise || '\u2014') + '  \U0001F307 ' + (d.guard_sunset || '\u2014');
     if (d.guard_cloud_pct !== null) sunText += '  \u2601\ufe0f ' + d.guard_cloud_pct.toFixed(0) + '%';
+    if (d.guard_tomorrow_boost > 0.5) sunText += '  \U0001F327\ufe0f tmrw +' + d.guard_tomorrow_boost.toFixed(0) + '%';
     if (d.guard_seasonal_extra > 0) sunText += '  \u2744\ufe0f +' + d.guard_seasonal_extra.toFixed(0) + '%';
     document.getElementById('guard-sun').textContent = sunText;
     document.getElementById('guard-reason').textContent = d.guard_reason || '';
@@ -1073,6 +1082,10 @@ function _refreshGuardModal(d) {{
   document.getElementById('gm-sunset').textContent = d.guard_sunset || '\u2014';
   document.getElementById('gm-cloud').textContent =
     d.guard_cloud_pct !== null ? d.guard_cloud_pct.toFixed(0) + '%' : 'n/a (forecast disabled)';
+  document.getElementById('gm-tomorrow-cloud').textContent =
+    d.guard_tomorrow_cloud_pct !== null ? d.guard_tomorrow_cloud_pct.toFixed(0) + '%' : 'n/a';
+  document.getElementById('gm-tomorrow-boost').textContent =
+    d.guard_tomorrow_boost > 0.5 ? '+' + d.guard_tomorrow_boost.toFixed(1) + '% (rainy day expected)' : 'none';
   document.getElementById('gm-seasonal').textContent =
     d.guard_seasonal_extra > 0 ? '+' + d.guard_seasonal_extra.toFixed(1) + '%' : 'none (summer)';
   document.getElementById('gm-reason').textContent = d.guard_reason || '\u2014';

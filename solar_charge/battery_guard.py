@@ -91,6 +91,13 @@ class BatteryGuardConfig:
     weather_overcast_threshold: float = 70.0  # % cloud cover considered "overcast"
     weather_max_sunset_advance_h: float = 2.0  # max hours to advance sunset
 
+    # Tomorrow weather: raise night_reserve when tomorrow is a rainy/cloudy day.
+    # The guard will target a higher battery SOC overnight so the battery enters
+    # tomorrow as full as possible when solar generation will be low all day.
+    use_tomorrow_forecast: bool = True
+    tomorrow_overcast_threshold: float = 70.0  # % cloud cover that counts as "overcast tomorrow"
+    tomorrow_night_reserve_max_pct: float = 95.0  # night reserve when tomorrow is 100% overcast
+
     # Historic average solar: relax guard when expected remaining solar is sufficient.
     use_historic_solar: bool = True
     historic_months_lookback: int = 3  # months of data to average
@@ -109,6 +116,7 @@ class BatteryGuardConfig:
     # Internal — not user-settable
     _weather_cache_ts: float = field(default=0.0,   repr=False)
     _weather_cloud_pct: float | None = field(default=None, repr=False)
+    _tomorrow_cloud_pct: float | None = field(default=None, repr=False)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -128,6 +136,8 @@ class GuardStatus:
     sunrise_local: str = ""          # e.g. "06:12"
     reason: str = ""                 # human-readable explanation
     weather_cloud_pct: float | None = None  # avg cloud cover remaining today (0–100)
+    tomorrow_cloud_pct: float | None = None  # avg cloud cover for tomorrow (0–100)
+    tomorrow_night_reserve_boost: float = 0.0  # extra night reserve added due to tomorrow's forecast
     seasonal_extra_pct: float = 0.0  # extra reserve added for season
 
 
@@ -170,18 +180,22 @@ def _solar_event_utc(lat: float, lon: float, d: date, *, sunrise: bool) -> datet
 #  Weather forecast (Open-Meteo, free, no API key required)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _fetch_cloud_cover(lat: float, lon: float) -> float | None:
+def _fetch_cloud_cover(lat: float, lon: float) -> tuple[float | None, float | None]:
     """
-    Fetch average cloud cover (%) for the remaining daylight hours today from
-    the Open-Meteo free API.
+    Fetch average cloud cover (%) for:
 
-    Returns the average 0–100 value, or ``None`` on any error.  This function
-    is blocking — run it in a thread-pool executor from async code.
+    * **today** — remaining hours from now until end of today
+    * **tomorrow** — all 24 hours of tomorrow
+
+    Uses the Open-Meteo free API (no key required).  Returns
+    ``(today_avg, tomorrow_avg)``; either value is ``None`` on error.
+    This function is blocking — call it from a thread-pool executor in
+    async code.
     """
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat:.4f}&longitude={lon:.4f}"
-        f"&hourly=cloud_cover&forecast_days=1&timezone=auto"
+        f"&hourly=cloud_cover&forecast_days=2&timezone=auto"
     )
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "SolarCharge/1.0"})
@@ -189,20 +203,32 @@ def _fetch_cloud_cover(lat: float, lon: float) -> float | None:
             data = json.loads(resp.read().decode())
     except Exception as exc:
         log.debug("BatteryGuard: weather fetch failed: %s", exc)
-        return None
+        return None, None
 
     try:
         times: list[str] = data["hourly"]["time"]
         covers: list[int] = data["hourly"]["cloud_cover"]
-        now_str = datetime.now().strftime("%Y-%m-%dT%H")
-        # Collect all hours from now onwards today
-        remaining = [c for t, c in zip(times, covers) if t >= now_str]
-        if not remaining:
-            return None
-        return round(sum(remaining) / len(remaining), 1)
+        now_str      = datetime.now().strftime("%Y-%m-%dT%H")
+        today_str    = datetime.now().strftime("%Y-%m-%d")
+        tomorrow_str = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        # Today: hours from now onwards (inclusive)
+        today_remaining = [
+            c for t, c in zip(times, covers)
+            if t >= now_str and t.startswith(today_str)
+        ]
+        # Tomorrow: all 24 hours
+        tomorrow_all = [
+            c for t, c in zip(times, covers)
+            if t.startswith(tomorrow_str)
+        ]
+
+        today_avg    = round(sum(today_remaining) / len(today_remaining), 1) if today_remaining else None
+        tomorrow_avg = round(sum(tomorrow_all)    / len(tomorrow_all),    1) if tomorrow_all    else None
+        return today_avg, tomorrow_avg
     except (KeyError, TypeError, ZeroDivisionError) as exc:
         log.debug("BatteryGuard: weather parse error: %s", exc)
-        return None
+        return None, None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -370,6 +396,7 @@ class BatteryGuard:
 
         # ── Weather-based effective sunset ──────────────────────────────
         cloud_pct = self._cloud_cover()
+        tomorrow_cloud_pct = self._tomorrow_cloud_cover()
         effective_sunset_utc = sunset_utc
         if cfg.use_weather_forecast and cloud_pct is not None:
             overcast_fraction = max(
@@ -390,6 +417,26 @@ class BatteryGuard:
             remaining_solar_wh = _expected_remaining_solar_wh(
                 self._ts, lat, lon, now, cfg.historic_months_lookback
             )
+
+        # ── Tomorrow-weather night-reserve boost ───────────────────────────
+        # If tomorrow is predicted to be heavily overcast / rainy, solar output
+        # will be low all day.  To compensate we raise tonight's night_reserve
+        # so the battery enters tomorrow as full as possible.
+        tomorrow_boost = 0.0
+        if cfg.use_tomorrow_forecast and tomorrow_cloud_pct is not None:
+            overcast_frac = max(
+                0.0,
+                (tomorrow_cloud_pct - cfg.tomorrow_overcast_threshold)
+                / (100.0 - cfg.tomorrow_overcast_threshold),
+            )
+            max_boost = max(0.0, cfg.tomorrow_night_reserve_max_pct - night_reserve)
+            tomorrow_boost = round(overcast_frac * max_boost, 1)
+            if tomorrow_boost > 0.5:
+                night_reserve = min(cfg.tomorrow_night_reserve_max_pct, night_reserve + tomorrow_boost)
+                log.debug(
+                    "BatteryGuard: tomorrow cloud cover %.0f%% → night_reserve boosted by %.1f%% to %.0f%%",
+                    tomorrow_cloud_pct, tomorrow_boost, night_reserve,
+                )
 
         # ── Required SOC at this moment ──────────────────────────────────
         now_utc = now.astimezone(timezone.utc)
@@ -466,6 +513,9 @@ class BatteryGuard:
                 surplus_w, guarded_surplus, reason,
             )
 
+        if tomorrow_boost > 0.5:
+            reason += f" [tomorrow rain: +{tomorrow_boost:.0f}% night reserve]"
+
         status = GuardStatus(
             enabled=True,
             active=active,
@@ -477,6 +527,8 @@ class BatteryGuard:
             sunrise_local=sunrise_str,
             reason=reason,
             weather_cloud_pct=cloud_pct,
+            tomorrow_cloud_pct=tomorrow_cloud_pct,
+            tomorrow_night_reserve_boost=tomorrow_boost,
             seasonal_extra_pct=round(seasonal_extra, 1),
         )
         return guarded_surplus, status
@@ -538,14 +590,27 @@ class BatteryGuard:
         return round((soc - hard_min) / band, 3)
 
     def _cloud_cover(self) -> float | None:
-        """Return cached cloud cover %, refreshing if stale."""
+        """Return cached today cloud cover %, refreshing if stale."""
         cfg = self._cfg
         if not cfg.use_weather_forecast:
             return None
         age_s = time.monotonic() - cfg._weather_cache_ts
         if age_s < cfg.weather_cache_minutes * 60 and cfg._weather_cloud_pct is not None:
             return cfg._weather_cloud_pct
-        cloud = _fetch_cloud_cover(cfg.latitude, cfg.longitude)
-        cfg._weather_cloud_pct = cloud
+        today_cloud, tomorrow_cloud = _fetch_cloud_cover(cfg.latitude, cfg.longitude)
+        cfg._weather_cloud_pct = today_cloud
+        cfg._tomorrow_cloud_pct = tomorrow_cloud
         cfg._weather_cache_ts = time.monotonic()
-        return cloud
+        return today_cloud
+
+    def _tomorrow_cloud_cover(self) -> float | None:
+        """Return cached tomorrow cloud cover %.  Piggybacks on the today cache refresh."""
+        cfg = self._cfg
+        if not cfg.use_weather_forecast:
+            return None
+        age_s = time.monotonic() - cfg._weather_cache_ts
+        if age_s < cfg.weather_cache_minutes * 60 and cfg._tomorrow_cloud_pct is not None:
+            return cfg._tomorrow_cloud_pct
+        # Trigger a refresh (populates both today and tomorrow)
+        self._cloud_cover()
+        return cfg._tomorrow_cloud_pct

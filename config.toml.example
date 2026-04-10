@@ -63,6 +63,12 @@ use_weather_forecast         = true
 weather_overcast_threshold   = 70     # cloud-cover % considered "overcast"
 weather_max_sunset_advance_h = 2.0    # max hours to advance effective sunset
 
+# Tomorrow weather: if tomorrow is heavily overcast/rainy, boost tonight's
+# night_reserve so the battery is as full as possible going into the next day.
+use_tomorrow_forecast        = true
+tomorrow_overcast_threshold  = 70     # cloud-cover % that counts as "rainy tomorrow"
+tomorrow_night_reserve_max_pct = 95   # target night reserve when tomorrow is 100% overcast
+
 # Historic solar data from the built-in TimeseriesStore
 use_historic_solar           = true
 historic_months_lookback     = 3      # months of history to average

@@ -591,6 +591,8 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
     z-index:600; text-transform:none; letter-spacing:normal; white-space:normal; }}
   .tip:hover::after {{ opacity:1; }}
   .tip-right::after {{ left:auto; right:0; transform:none; }}
+  /* modal-body has overflow:auto — flip tips downward to avoid clipping */
+  .modal .tip::after {{ bottom:auto; top:calc(100% + 7px); }}
 </style>
 </head>
 <body>
@@ -843,12 +845,12 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
       <div class="diag-section">
         <h4>State of Charge</h4>
         <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem">
-          <span style="font-size:.8rem;color:var(--muted)">Current</span>
+          <span style="font-size:.8rem;color:var(--muted)">Current <span class="tip" data-tip="Live battery state-of-charge reported by SENEC.">i</span></span>
           <strong id="gm-soc-cur" style="font-size:1.4rem;min-width:3rem">—%</strong>
           <div class="guard-bar-track" style="flex:1;height:.85rem">
             <div id="gm-bar-fill" class="guard-bar-fill" style="width:0%"></div>
           </div>
-          <span style="font-size:.8rem;color:var(--muted)">Required</span>
+          <span style="font-size:.8rem;color:var(--muted)">Required <span class="tip" data-tip="Minimum SoC the guard wants the battery to hold right now, based on time of day, sunset proximity, cloud cover, seasonal correction and tomorrow's forecast.">i</span></span>
           <strong id="gm-soc-req" style="font-size:1.4rem;min-width:3rem">—%</strong>
         </div>
         <div style="font-size:.75rem;color:var(--muted)" id="gm-bar-label"></div>
@@ -859,7 +861,7 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
         <table class="reg-table">
           <tbody>
             <tr>
-              <td>Mode <span class="tip" data-tip="Linear Factor: surplus scales gradually with SoC (0–1). Full-or-Off: EV gets the full surplus or nothing.">i</span></td>
+              <td>Mode <span class="tip" data-tip="Linear Factor: surplus is scaled gradually (0–1×) as SoC rises from the hard-min floor to the required target — smooth proportional charging. Full-or-Off: EV receives the full surplus when SoC ≥ required, or nothing at all otherwise — maximises power during peak sun.">i</span></td>
               <td><strong id="gm-mode">Linear factor</strong></td>
               <td style="text-align:right">
                 <label class="toggle" style="margin:0">
@@ -868,13 +870,13 @@ def _build_dashboard_html(cfg: ControllerConfig) -> str:
                 </label>
               </td>
             </tr>
-            <tr><td>Surplus factor</td><td><strong id="gm-factor">—</strong></td><td></td></tr>
-            <tr><td>Sunrise</td><td id="gm-sunrise">—</td><td></td></tr>
-            <tr><td>Effective sunset</td><td id="gm-sunset">—</td><td></td></tr>
-            <tr><td>Cloud cover</td><td id="gm-cloud">—</td><td></td></tr>
-            <tr><td>Tomorrow cloud cover</td><td id="gm-tomorrow-cloud">—</td><td></td></tr>
-            <tr><td>Tomorrow night reserve boost</td><td id="gm-tomorrow-boost">—</td><td></td></tr>
-            <tr><td>Seasonal correction</td><td id="gm-seasonal">—</td><td></td></tr>
+            <tr><td>Surplus factor <span class="tip" data-tip="Multiplier (0–1) applied to the available EV surplus this cycle. 1.0 = unrestricted charging; 0.0 = EV charging blocked to protect the battery.">i</span></td><td><strong id="gm-factor">—</strong></td><td></td></tr>
+            <tr><td>Sunrise <span class="tip" data-tip="Today's calculated sunrise time at your configured location. The guard only applies the daytime reserve after this time.">i</span></td><td id="gm-sunrise">—</td><td></td></tr>
+            <tr><td>Effective sunset <span class="tip" data-tip="Sunset time after advancing for heavy cloud cover. The afternoon SoC ramp targets this time rather than the astronomical sunset, giving the battery more time to recover on overcast days.">i</span></td><td id="gm-sunset">—</td><td></td></tr>
+            <tr><td>Cloud cover <span class="tip" data-tip="Average cloud cover (%) across the remaining daylight hours today, from the Open-Meteo free forecast API. Values above the overcast threshold advance the effective sunset.">i</span></td><td id="gm-cloud">—</td><td></td></tr>
+            <tr><td>Tomorrow cloud cover <span class="tip" data-tip="Average cloud cover (%) across all 24 hours of tomorrow. High values trigger a night-reserve boost so the battery enters a solar-poor day as full as possible.">i</span></td><td id="gm-tomorrow-cloud">—</td><td></td></tr>
+            <tr><td>Tomorrow night reserve boost <span class="tip" data-tip="Extra % added to tonight's night reserve because tomorrow is forecast to be overcast or rainy. Scales linearly from 0 at the overcast threshold to the configured maximum at 100% cloud cover.">i</span></td><td id="gm-tomorrow-boost">—</td><td></td></tr>
+            <tr><td>Seasonal correction <span class="tip" data-tip="Extra % added to the night reserve in winter months. Follows a cosine curve: maximum around January, zero around July, to compensate for shorter days and weaker sun.">i</span></td><td id="gm-seasonal">—</td><td></td></tr>
           </tbody>
         </table>
       </div>
@@ -1602,7 +1604,9 @@ def _build_reports_html() -> str:
     z-index:600; text-transform:none; letter-spacing:normal; white-space:normal; }
   .tip:hover::after { opacity:1; }
   .tip-right::after { left:auto; right:0; transform:none; }
-  .sessions-table th .tip::after { bottom:calc(100% + 7px); }
+  /* table-wrap has overflow:hidden for rounded corners — flip header tips downward
+     so they pop into the table body rather than clipping above the container */
+  .sessions-table th .tip::after { bottom:auto; top:calc(100% + 7px); }
 </style>
 </head>
 <body>

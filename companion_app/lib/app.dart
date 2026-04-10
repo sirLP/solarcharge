@@ -13,7 +13,7 @@ class SolarChargeApp extends StatelessWidget {
       title: 'SolarCharge',
       theme: CupertinoThemeData(
         primaryColor: CupertinoColors.systemGreen,
-        brightness: Brightness.light,
+        brightness: Brightness.dark,
       ),
       home: _AppTabs(),
     );

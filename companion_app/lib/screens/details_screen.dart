@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/config.dart';
 import '../providers/api_providers.dart';
 
+const String _kAppVersion = '1.0.0+1';
+
 class DetailsScreen extends ConsumerStatefulWidget {
   const DetailsScreen({super.key});
 
@@ -192,6 +194,17 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       ),
                   ],
                 ),
+                const SizedBox(height: 20),
+                Center(
+                  child: Text(
+                    'App version $_kAppVersion',
+                    style: const TextStyle(
+                      color: CupertinoColors.systemGrey,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
               ],
             );
           },

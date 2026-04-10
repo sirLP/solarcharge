@@ -48,46 +48,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            const _SectionLabel('Server'),
-            _Card(
-              children: [
-                const Text(
-                  'Server URL',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: CupertinoColors.systemGrey,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                CupertinoTextField(
-                  controller: _urlController,
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                  placeholder: 'http://solarcharge.local',
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: CupertinoColors.tertiarySystemGroupedBackground,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'The hostname or IP address of your SolarCharge server.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: CupertinoColors.systemGrey,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                CupertinoButton.filled(
-                  onPressed: _save,
-                  child: Text(_saved ? '✓ Saved' : 'Save'),
-                ),
-              ],
+            const Text(
+              'Server URL',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: CupertinoColors.systemGrey,
+              ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 6),
+            CupertinoTextField(
+              controller: _urlController,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              placeholder: 'http://solarcharge.local',
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: CupertinoColors.secondarySystemGroupedBackground,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'The hostname or IP address of your SolarCharge server.',
+              style: TextStyle(
+                fontSize: 12,
+                color: CupertinoColors.systemGrey,
+              ),
+            ),
+            const SizedBox(height: 16),
+            CupertinoButton.filled(
+              onPressed: _save,
+              child: Text(_saved ? '✓ Saved' : 'Save'),
+            ),
+            const SizedBox(height: 32),
             const _AboutSection(),
           ],
         ),
@@ -104,66 +99,40 @@ class _AboutSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel('About'),
-        _Card(
-          children: [
-            const Text(
-              'SolarCharge Companion',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Monitor and control your home EV charging solution.',
-              style: TextStyle(
-                color: CupertinoColors.systemGrey,
-                fontSize: 13,
+        const Text(
+          'About',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+            color: CupertinoColors.systemGrey,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: CupertinoColors.secondarySystemGroupedBackground,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'SolarCharge Companion',
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
-            ),
-          ],
+              SizedBox(height: 4),
+              Text(
+                'Monitor and control your SolarCharge EV wallbox.',
+                style: TextStyle(
+                  color: CupertinoColors.systemGrey,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text.toUpperCase(),
-        style: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-          color: CupertinoColors.systemGrey,
-          letterSpacing: 0.8,
-        ),
-      ),
-    );
-  }
-}
-
-class _Card extends StatelessWidget {
-  const _Card({required this.children});
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: CupertinoColors.secondarySystemGroupedBackground,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
-      ),
     );
   }
 }

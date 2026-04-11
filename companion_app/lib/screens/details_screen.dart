@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/config.dart';
 import '../providers/api_providers.dart';
+import 'charging_history_screen.dart';
 
 const String _kAppVersion = '1.0.0+1';
 
@@ -15,6 +16,7 @@ class DetailsScreen extends ConsumerStatefulWidget {
 
 class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   late Future<_DetailsData> _future;
+  _DetailsData? _cachedData;
 
   @override
   void initState() {
@@ -28,12 +30,18 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     final diagnostics = await api.fetchDiagnostics();
     final rfid = await api.fetchRfidConfig();
     final blocked = await api.fetchRfidBlocked();
-    return _DetailsData(
+    final data = _DetailsData(
       config: config,
       diagnostics: diagnostics,
       rfid: rfid,
       blocked: blocked,
+      fetchedAt: DateTime.now(),
     );
+    // Cache successful load
+    if (mounted) {
+      _cachedData = data;
+    }
+    return data;
   }
 
   Future<void> _refresh() async {
@@ -44,6 +52,10 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (MediaQuery.of(context).orientation == Orientation.landscape) {
+      return const ChargingHistoryScreen();
+    }
+
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: const Text('Details'),
@@ -57,10 +69,15 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
         child: FutureBuilder<_DetailsData>(
           future: _future,
           builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
+            final data = snap.data ?? _cachedData;
+            final isRefreshing =
+                snap.connectionState == ConnectionState.waiting && _cachedData != null;
+            final refreshError = snap.hasError && _cachedData != null;
+
+            if (snap.connectionState == ConnectionState.waiting && data == null) {
               return const Center(child: CupertinoActivityIndicator());
             }
-            if (snap.hasError) {
+            if (snap.hasError && data == null) {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -68,13 +85,25 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 ),
               );
             }
-            final data = snap.data;
             if (data == null) {
               return const Center(child: Text('No details available.'));
             }
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (isRefreshing) ...[
+                  const _InfoBanner(
+                    message: 'Refreshing in background. Showing cached details.',
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (refreshError) ...[
+                  const _InfoBanner(
+                    message: 'Refresh failed. Showing cached details.',
+                    isWarning: true,
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _Card(
                   title: 'Diagnostics',
                   children: [
@@ -141,12 +170,24 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 ),
                 const SizedBox(height: 20),
                 Center(
-                  child: Text(
-                    'App version $_kAppVersion',
-                    style: const TextStyle(
-                      color: CupertinoColors.systemGrey,
-                      fontSize: 12,
-                    ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Fetched at ${_fmtTime(data.fetchedAt)}',
+                        style: const TextStyle(
+                          color: CupertinoColors.systemGrey,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'App version $_kAppVersion',
+                        style: TextStyle(
+                          color: CupertinoColors.systemGrey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -176,12 +217,53 @@ class _DetailsData {
     required this.diagnostics,
     required this.rfid,
     required this.blocked,
+    required this.fetchedAt,
   });
 
   final ChargeConfig config;
   final Map<String, dynamic> diagnostics;
   final Map<String, dynamic> rfid;
   final List<Map<String, dynamic>> blocked;
+  final DateTime fetchedAt;
+}
+
+class _InfoBanner extends StatelessWidget {
+  const _InfoBanner({required this.message, this.isWarning = false});
+
+  final String message;
+  final bool isWarning;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isWarning ? const Color(0xFFFFF7D6) : const Color(0xFFEAF4FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isWarning
+              ? CupertinoColors.systemOrange.withValues(alpha: 0.35)
+              : CupertinoColors.systemBlue.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(
+          color: isWarning
+              ? CupertinoColors.systemOrange.darkColor
+              : CupertinoColors.systemBlue.darkColor,
+          fontSize: 13,
+        ),
+      ),
+    );
+  }
+}
+
+String _fmtTime(DateTime value) {
+  final hour = value.hour.toString().padLeft(2, '0');
+  final minute = value.minute.toString().padLeft(2, '0');
+  final second = value.second.toString().padLeft(2, '0');
+  return '$hour:$minute:$second';
 }
 
 class _Card extends StatelessWidget {
@@ -196,7 +278,11 @@ class _Card extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: CupertinoColors.secondarySystemGroupedBackground,
+        color: CupertinoColors.white,
+        border: Border.all(
+          color: CupertinoColors.separator,
+          width: 1.2,
+        ),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(

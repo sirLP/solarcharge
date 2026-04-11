@@ -12,7 +12,11 @@ class PowerFlowCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: CupertinoColors.secondarySystemGroupedBackground,
+        color: CupertinoColors.white,
+        border: Border.all(
+          color: CupertinoColors.separator,
+          width: 1.2,
+        ),
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.all(16),
@@ -68,6 +72,16 @@ class PowerFlowCard extends StatelessWidget {
             label: 'Surplus',
             valueW: status.surplusW,
           ),
+          if (status.chargingActive)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: _PowerRow(
+                icon: CupertinoIcons.bolt_fill,
+                color: CupertinoColors.activeBlue,
+                label: 'EV Charging',
+                valueW: status.wallboxPowerW,
+              ),
+            ),
           if (status.sessionKwh > 0)
             Padding(
               padding: const EdgeInsets.only(top: 4),

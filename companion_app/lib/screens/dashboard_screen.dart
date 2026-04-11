@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/status.dart';
 import '../providers/api_providers.dart';
+import '../widgets/charts_view.dart';
 import '../widgets/power_flow_card.dart';
 import '../widgets/status_badge.dart';
 
@@ -19,6 +20,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     with WidgetsBindingObserver {
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
+  ChargeStatus? _cachedStatus;
+  bool _initialLoadDone = false;
 
   @override
   void initState() {
@@ -63,7 +66,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
+    // In landscape, replace the dashboard with the power graph.
+    if (MediaQuery.of(context).orientation == Orientation.landscape) {
+      return const ChartsView();
+    }
+
     final statusAsync = ref.watch(statusProvider);
+
+    // Cache successful data
+    if (statusAsync.hasValue) {
+      _cachedStatus = statusAsync.value!;
+      _initialLoadDone = true;
+    }
+
+    // Determine what to display
+    final displayStatus = _cachedStatus;
+    final isRefreshing = statusAsync.isLoading && _initialLoadDone;
+    final refreshError = statusAsync.hasError && _initialLoadDone;
 
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
@@ -75,15 +94,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         ),
       ),
       child: SafeArea(
-        child: statusAsync.when(
-          loading: () => const Center(child: CupertinoActivityIndicator()),
-          error: (err, _) => _ErrorView(error: err.toString()),
-          data: (status) => _Dashboard(
-            status: status,
-            elapsedLabel: _elapsedLabel(status.timestamp),
-            isStale: _isStale(status.timestamp),
-          ),
-        ),
+        child: displayStatus == null
+            ? statusAsync.when(
+                loading: () => const Center(child: CupertinoActivityIndicator()),
+                error: (err, _) => _ErrorView(error: err.toString()),
+                data: (_) => const SizedBox(), // This shouldn't happen due to caching
+              )
+            : _Dashboard(
+                status: displayStatus,
+                elapsedLabel: _elapsedLabel(displayStatus.timestamp),
+                isStale: _isStale(displayStatus.timestamp),
+                isRefreshing: isRefreshing,
+                refreshError: refreshError,
+              ),
       ),
     );
   }
@@ -96,16 +119,33 @@ class _Dashboard extends StatelessWidget {
     required this.status,
     required this.elapsedLabel,
     required this.isStale,
+    this.isRefreshing = false,
+    this.refreshError = false,
   });
   final ChargeStatus status;
   final String elapsedLabel;
   final bool isStale;
+  final bool isRefreshing;
+  final bool refreshError;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (isRefreshing) ...[
+          const _NoticeBanner(
+            message: 'Refreshing in background. Showing cached status.',
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (refreshError) ...[
+          _NoticeBanner(
+            message: 'Refresh failed. Showing cached status.',
+            isWarning: true,
+          ),
+          const SizedBox(height: 8),
+        ],
         // Timestamp
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -138,6 +178,38 @@ class _Dashboard extends StatelessWidget {
         // 4) Power flow tiles
         PowerFlowCard(status: status),
       ],
+    );
+  }
+}
+
+class _NoticeBanner extends StatelessWidget {
+  const _NoticeBanner({required this.message, this.isWarning = false});
+
+  final String message;
+  final bool isWarning;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isWarning ? const Color(0xFFFFF7D6) : const Color(0xFFEAF4FF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isWarning
+              ? CupertinoColors.systemOrange.withValues(alpha: 0.35)
+              : CupertinoColors.systemBlue.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(
+          color: isWarning
+              ? CupertinoColors.systemOrange.darkColor
+              : CupertinoColors.systemBlue.darkColor,
+          fontSize: 12,
+        ),
+      ),
     );
   }
 }
@@ -240,7 +312,11 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: CupertinoColors.secondarySystemGroupedBackground,
+        color: CupertinoColors.white,
+        border: Border.all(
+          color: CupertinoColors.separator,
+          width: 1.2,
+        ),
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.all(16),

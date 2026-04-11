@@ -59,6 +59,9 @@ class _AppTabsState extends State<_AppTabs> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return CupertinoPageScaffold(
       child: Column(
         children: [
@@ -71,24 +74,25 @@ class _AppTabsState extends State<_AppTabs> {
               children: _pages,
             ),
           ),
-          CupertinoTabBar(
-            currentIndex: _currentIndex,
-            onTap: _onTabTapped,
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.bolt_fill),
-                label: 'Dashboard',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.doc_text_search),
-                label: 'Details',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.settings),
-                label: 'Settings',
-              ),
-            ],
-          ),
+          if (!isLandscape)
+            CupertinoTabBar(
+              currentIndex: _currentIndex,
+              onTap: _onTabTapped,
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(CupertinoIcons.bolt_fill),
+                  label: 'Dashboard',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(CupertinoIcons.doc_text_search),
+                  label: 'Details',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(CupertinoIcons.settings),
+                  label: 'Settings',
+                ),
+              ],
+            ),
         ],
       ),
     );

@@ -119,22 +119,29 @@ class ApiService {
     return const [];
   }
 
-  // ── history ──────────────────────────────────────────────────────────────
+  // ── charging history ─────────────────────────────────────────────────────
 
-  Future<List<Map<String, dynamic>>> fetchHistory({int days = 7}) async {
-    final resp = await http.get(
-      _uri('/api/history').replace(queryParameters: {'days': '$days'}),
-    );
-    final body = jsonDecode(resp.body);
-    return (body as List).cast<Map<String, dynamic>>();
+  Future<Map<String, dynamic>> fetchWallboxSessions() async {
+    final resp = await http.get(_uri('/api/wallbox-sessions'));
+    return _decode(resp);
   }
 
   // ── timeseries ───────────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> fetchTimeseries({int hours = 24}) async {
+  Future<Map<String, dynamic>> fetchTimeseries({
+    int minutes = 60,
+    String fields = '',
+    int maxPoints = 600,
+    String groupBy = 'none',
+  }) async {
+    final params = <String, String>{
+      'minutes': '$minutes',
+      'max_points': '$maxPoints',
+      'group_by': groupBy,
+      if (fields.isNotEmpty) 'fields': fields,
+    };
     final resp = await http.get(
-      _uri('/api/timeseries')
-          .replace(queryParameters: {'hours': '$hours'}),
+      _uri('/api/timeseries').replace(queryParameters: params),
     );
     return _decode(resp);
   }

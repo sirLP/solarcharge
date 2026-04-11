@@ -50,9 +50,6 @@ dependencies:
   # Charts for timeseries / history screens
   fl_chart: ^0.70.2
 
-  # Relative timestamps ("2 min ago")
-  timeago: ^3.7.0
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
